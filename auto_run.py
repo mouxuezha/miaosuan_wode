@@ -4,12 +4,20 @@ import json
 import os
 import time
 import zipfile
-from sdk.train_env.cross_fire_env import CrossFireEnv
-from sdk.train_env.scout_env import ScoutEnv
-from sdk.train_env.defend_env import DefendEnv
+import sys 
+sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
+from train_env.cross_fire_env import CrossFireEnv
+from train_env.scout_env import ScoutEnv
+from train_env.defend_env import DefendEnv
 
 class auto_run():
     def __init__(self,env_name="crossfire") -> None:
+
+        # these flags identified the status from env.
+        self.red_flag = 0
+        self.blue_flag = 1
+        self.white_flag = -1
+
         if env_name == "crossfire":
             self.__init_crossfire()
         elif env_name == "defend":
@@ -19,18 +27,41 @@ class auto_run():
         else:
             raise Exception("auto_run: invalid env setting, G.")
         
-        # these flags identified the status from env.
-        self.red_flag = 0
-        self.blue_flag = 1
-        self.white_flags = -1
+
         
         pass
 
     def __init_crossfire(self):
-        from sdk.ai.agent import Agent
+        # from ai.agent import Agent
+        from agent_guize import agent_guize
         self.env = CrossFireEnv()
-        self.agent = Agent()
+        self.agent = agent_guize()
         self.begin = time.time()
+        # # varialbe to build replay
+        # self.all_states = []
+
+        # ai_user_name = 'myai'
+        # ai_user_id = 1
+
+        # state = self.env.setup({'user_name': ai_user_name, 'user_id': ai_user_id})
+        # self.all_states.append(state[self.white_flag])
+        # self.agent.setup(
+        #     {
+        #         "scenario": self.env.scenario_data,
+        #         "basic_data": self.env.basic_data,
+        #         "cost_data": self.env.cost_data,
+        #         "see_data": self.env.see_data,
+        #         "seat": 1,
+        #         "faction": 0,
+        #         "role": 0,
+        #         "user_name": ai_user_name,
+        #         "user_id": ai_user_id,
+        #     }
+        # )
+
+
+
+    def run_single(self):
         # varialbe to build replay
         self.all_states = []
 
@@ -38,7 +69,7 @@ class auto_run():
         ai_user_id = 1
 
         state = self.env.setup({'user_name': ai_user_name, 'user_id': ai_user_id})
-        self.all_states.append(state[self.white_flags])
+        self.all_states.append(state[self.white_flag])
         self.agent.setup(
             {
                 "scenario": self.env.scenario_data,
@@ -53,9 +84,6 @@ class auto_run():
             }
         )
 
-
-
-    def run_single(self):
         done = False
         while not done:
             actions = self.agent.step(state[self.red_flag])
@@ -70,6 +98,7 @@ class auto_run():
         save_replay(self.begin, self.all_states)
         pass
 
+# copy from demo code
 def save_replay(replay_name, data):
     zip_name = f"logs/replays/{replay_name}.zip"
     if not os.path.exists("logs/replays/"):
