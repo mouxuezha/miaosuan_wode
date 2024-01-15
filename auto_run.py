@@ -88,7 +88,7 @@ class auto_run():
         while not done:
             actions = self.agent.step(state[self.red_flag])
             state, done = self.env.step(actions)
-            self.all_states.append(state[self.white_flags])
+            self.all_states.append(state[self.white_flag])
 
         self.agent.reset()
         self.env.reset()
