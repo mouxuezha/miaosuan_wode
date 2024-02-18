@@ -160,15 +160,16 @@ class agent_guize(Agent):
             prior_list = [-1] # pao did not use prior list 
         elif unit_type == 4: # unmanned che 
             prior_list = [5,7,6,8,2,0,1,-1] # the only airdefender 
-        elif unit_type == 5: # UAV 
-            pass 
-        elif unit_type == 6: # helicopter
-            pass
-        elif unit_type == 7: # xunfei missile
-            pass 
-        elif unit_type == 8: # transport helicopter 
-            pass 
+        # elif unit_type == 5: # UAV 
+        #     pass 
+        # elif unit_type == 6: # helicopter
+        #     pass
+        # elif unit_type == 7: # xunfei missile
+        #     pass 
+        # elif unit_type == 8: # transport helicopter 
+        #     pass 
         else:
+            prior_list = [0, 1, 4, -1]
             pass 
 
         return prior_list
