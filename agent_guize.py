@@ -189,13 +189,122 @@ class agent_guize(Agent):
         self.act.append(action_move)
         return self.act
 
-    def _fire_action(self,attacker_ID, target_ID, weapon_type):
+    def _fire_action(self,attacker_ID, target_ID="None", weapon_type="None"):
         # check if th fire action is valid.
+        # fire_actions = self._check_actions(attacker_ID, model="fire")
+        fire_actions = self._check_actions(attacker_ID, model="test")
 
         # if so, shoot.
-
         # if not, nothing happen.
-        pass
+        if len(fire_actions)>0:
+            # get attack type
+            if 2 in fire_actions:
+                attack_type = 2 # direct
+            elif 9 in fire_actions:
+                attack_type = 9 # guided
+            else:
+                raise Exception("_fire_action: invalid attack_type")
+            
+            target_list = fire_actions[attack_type]
+            target_ID_list = [] 
+            weapon_type_list = [] 
+            for i in range(target_list):
+                target_ID_i = target_list[i]["target_obj_id"]
+                weapon_type_i = target_list[i]["weapon_id"]
+                target_ID_list.append[target_ID_i]
+                weapon_type_list.append[weapon_type_i] 
+
+            # get target_ID 
+            if target_ID!="None":
+                # target_selected
+                # decide target ID
+                target_ID_selected, index_target_ID = self._selecte_compare_list(target_ID, target_list)
+            else:
+                # no target selected.
+                target_ID_selected = target_ID_i[0]
+                index_target_ID = 0 
+
+            # decide weapon_ID
+            weappon_type_selected = weapon_type_list[index_target_ID]
+        else:
+            # no valid fire_action here, nothing happen 
+            pass
+    
+    def _selecte_compare_list(self, target_ID, target_ID_list):
+        # give an obj(target_ID) and a list(target_ID_list), if the obj is in the list, then reture it and its index. 
+        # if selected obj can not be reached, then randomly get one or find by prior list.
+
+        if len(target_ID_list)==0:
+            raise Exception("_selecte_compare_list: invalid list inputted")
+
+        if target_ID in target_ID_list:
+            # if so, attack
+            target_ID_selected = target_ID
+            index_target_ID = target_ID_list.index(target_ID_selected)  # find the first one and attack. need debug 0218
+            print("_selecte_compare_list: find the first one and attack. need debug 0218")
+        else:
+            # if selected target ID can not be reached, then randomly get one or find by prior list.
+            target_ID_selected = target_ID_list[0]
+            index_target_ID = 0 
+
+        return target_ID_selected, index_target_ID
+
+
+    def _check_actions(self, attacker_ID, model="void"):
+        # found all valid action of attacker_ID.
+        # model: "void" for return valid actions
+        # "fire" fire for return all valid fire action
+        # "board" for all about on board and off board. 
+        obj_id=attacker_ID
+        total_actions = [] 
+        observation = self.state 
+
+
+        if obj_id not in self.controllable_ops:
+            return total_actions
+        
+        total_actions = observation["valid_actions"][attacker_ID]
+
+        if model == "void":
+            # if model is "void", then skip selection and return the total actions.
+            return total_actions
+        else:
+            # select the actions by set the model
+            if model == "fire":
+                selected_action_list = [2,9]
+            elif model == "board":
+                selected_action_list = [3,4] 
+            elif model == "test":
+                selected_action_list = [] 
+                for i in range(10):
+                    selected_action_list.append(i)
+                
+            selected_actions = {}
+            for action_type in selected_action_list:
+                if action_type in total_actions:
+                    selected_actions[action_type] = total_actions[action_type]
+            return selected_actions
+
+        return total_actions
+    
+        # loop and find
+        for valid_actions in observation["valid_actions"].items():
+            for (
+                action_type
+            ) in self.priority:  
+                if action_type not in valid_actions:
+                    continue
+                
+                # find which is valid, but don't gen here.
+
+                # find the action generation method based on type
+                gen_action = self.priority[action_type]
+                action = gen_action(obj_id, valid_actions[action_type])
+                if action:
+                    total_actions.append(action)
+                    break  # one action per bop at a time
+        
+        return total_actions
 
 
     # abstract_state and related functinos
@@ -219,6 +328,8 @@ class agent_guize(Agent):
             if self.num%100==99:
                 print("Debug, self.num = "+str(self.num))
         self.observation = observation
+        self.state = observation # so laji but fangbian.
+
         self.team_info = observation["role_and_grouping_info"]
         self.controllable_ops = observation["role_and_grouping_info"][self.seat][
             "operators"
@@ -243,4 +354,8 @@ class agent_guize(Agent):
         pos_0 = unit0["cur_hex"]
         target_pos = pos_0 + 3
         self._move_action(unit0["obj_id"],target_pos)
+        self._check_actions(unit0["obj_id"])
+        self._fire_action(unit0["obj_id"])
+        self._check_actions(unit0["obj_id"], model="test")
+        self._check_actions(unit0["obj_id"], model="fire")
         pass
