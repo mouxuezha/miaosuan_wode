@@ -243,6 +243,7 @@ class agent_guize(Agent):
             "target_obj_id": target_ID_selected,
             "weapon_id": weappon_type_selected,
             }
+
             self.act.append(action_gen)
             return self.act
         else:
@@ -268,7 +269,6 @@ class agent_guize(Agent):
             index_target_ID = 0 
 
         return target_ID_selected, index_target_ID
-
 
     def _check_actions(self, attacker_ID, model="void"):
         # found all valid action of attacker_ID.
@@ -326,11 +326,12 @@ class agent_guize(Agent):
         
         return total_actions
 
-
     # abstract_state and related functinos
     def Gostep_absract_state(self,**kargs):
         pass
 
+    def set_move_and_attack(self):
+        pass 
     # guize_functions
     def F2A(self):
         pass
