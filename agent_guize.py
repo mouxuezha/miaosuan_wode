@@ -40,6 +40,7 @@ class agent_guize(Agent):
 
         self.status = {}
         self.detected_state = {} 
+        self.detected_state2 = {} 
 
         self.num = 0 
 
@@ -184,9 +185,14 @@ class agent_guize(Agent):
         pos_0 = unit0["cur_hex"]
         return pos_0
 
+    def get_ID_list(self,status):
+        
+        pass
+
     def distance(self, target_pos, attacker_pos):
-        print("distance: unfinished yet")
-        return 114514
+        jvli = self.map.get_distance(target_pos, attacker_pos)
+        # print("distance: unfinished yet")
+        return jvli
 
     # basic AI interface.
     def _move_action(self,attacker_ID, target_pos):
@@ -391,11 +397,13 @@ class agent_guize(Agent):
                 #     self.__handle_circle(my_ID, my_abstract_state["target_pos"], my_abstract_state["R"])
         pass
 
-    def __status_filter(self):
+    def __status_filter(self,status):
         print("__status_filter: unfinished yet.")
-        pass
+        return status
 
     def update_detectinfo(self, detectinfo):
+        print("update_detectinfo: not finished yet, and it seems not necessarry")
+        return 
         # 处理一下缓存的探测。
         # 好吧,这个并不需要。探测池子里面给到的“上一步”似乎是对的。
         for target_ID in detectinfo:
@@ -438,11 +446,10 @@ class agent_guize(Agent):
             # 说明是直接把status输入进来了。那就得循环。
             for attacker_ID_single in attacker_ID:
                 self.abstract_state[attacker_ID_single] = {"abstract_state": "move_and_attack",
-                                                           "target_pos": target_pos,
-                                                           "flag_moving": False, "jvli": 114514}
+                "target_pos": target_pos,
+                "flag_moving": False, "jvli": 114514}
         else:
-            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,
-                                                "flag_moving": False, "jvli": 114514}
+            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,            "flag_moving": False, "jvli": 114514}
         pass
 
     def __handle_move_and_attack(self, attacker_ID, target_pos):
@@ -457,7 +464,7 @@ class agent_guize(Agent):
         # 然后该打的打完了，就继续move呗
         attacker_pos = self.get_pos(attacker_ID)
         jvli = self.distance(target_pos[0], target_pos[1], target_pos[2],
-                             attacker_pos[0], attacker_pos[1], attacker_pos[2])  # 这里alt两个用成一样的，防止最后结束不了。
+        attacker_pos[0], attacker_pos[1], attacker_pos[2])  # 这里alt两个用成一样的，防止最后结束不了。
         if jvli > 10:
             # 那就是还没到，那就继续移动
             if self.abstract_state[attacker_ID]["flag_moving"] == False:
@@ -503,7 +510,7 @@ class agent_guize(Agent):
     def step(self, observation: dict):
 
         self.num = self.num + 1 
-        if self.num == 114514:
+        if self.num == 1:
             print("Debug, moving")
         else:
             if self.num%100==99:
@@ -534,9 +541,14 @@ class agent_guize(Agent):
         unit0 = self.get_bop(0)
         pos_0 = unit0["cur_hex"]
         target_pos = pos_0 + 3
-        self._move_action(unit0["obj_id"],target_pos)
-        self._check_actions(unit0["obj_id"])
-        self._fire_action(unit0["obj_id"])
-        self._check_actions(unit0["obj_id"], model="test")
-        self._check_actions(unit0["obj_id"], model="fire")
+        if self.num == 1:
+            self.set_move_and_attack(unit0["obj_id"], target_pos)
+        elif self.num > 114.514:
+            self._move_action(unit0["obj_id"],target_pos)
+            self._check_actions(unit0["obj_id"])
+            self._fire_action(unit0["obj_id"])
+            self._check_actions(unit0["obj_id"], model="test")
+            self._check_actions(unit0["obj_id"], model="fire")
         pass
+        
+        self.Gostep_abstract_state()
