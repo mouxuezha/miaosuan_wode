@@ -161,15 +161,15 @@ class agent_guize(Agent):
         elif unit_type == 4: # unmanned che 
             prior_list = [5,7,6,8,2,0,1,-1] # the only airdefender 
         elif unit_type == 5: # UAV 
-            pass 
+            prior_list = [0,1,4,-1] # it can do guided attack 
         elif unit_type == 6: # helicopter
-            pass
+            prior_list = [] # unused yet
         elif unit_type == 7: # xunfei missile
-            pass 
+            prior_list = [0,1,4,-1] # only one shot.
         elif unit_type == 8: # transport helicopter 
-            pass 
+            prior_list = [] # unused yet 
         else:
-            pass 
+            raise Exception("XXH: invalid unit_type in get_prior_list, G. ")
 
         return prior_list
 
@@ -188,14 +188,54 @@ class agent_guize(Agent):
         self.act.append(action_move)
         return self.act
 
-    def _fire_action(self,attacker_ID, target_ID, weapon_type):
+    def _attack_action(self,attacker_ID, target_ID, weapon_type):
         # check if th fire action is valid.
+        attack_action_list = self.action_check(attacker_ID,action_type="attack")
 
+        
         # if so, shoot.
+        if(len(attack_action_list)>0):
+            self.act += attack_action_list
+
+        # unfinished yet 20240115
+        烫烫烫烫烫烫烫烫烫
 
         # if not, nothing happen.
         pass
+    
+    def action_check(self, attacker_ID, action_type = "attack"):
+        # check if some kind of action is valid
+        valid_action_list = [] 
+        if attacker_ID not in self.controllable_ops:
+            return valid_action_list
+        
+        action_type_int = self.action_type_enum(action_type)
+        observation = self.observation
+        # loop this bop's valid actions
+        for obj_id, valid_actions in observation["valid_actions"].items():
+            if (obj_id == attacker_ID) and action_type_int==valid_actions.type:
+                gen_action = self.priority[action_type]
+                action = gen_action(obj_id, valid_actions[action_type])
+                if action:
+                    valid_action_list.append(action)
+                    break  # one action per bop at a time     
+        return valid_action_list
 
+    def action_type_enum(self,**kargs):
+        if "action_type_str" in kargs:
+            # this is str to int
+            action_type_str = kargs["action_type_str"]
+            # do not chongfu product the wheels.
+            action_type_int = ActionType[action_type_str]
+            return action_type_int
+        elif "action_type_int" in kargs:
+            # this is int to str
+            action_type_int = kargs["action_type_int"]
+            action_type_str = ActionType(action_type_int)
+            return action_type_str
+        else:
+            # this is G 
+            raise Exception("XXH: invalid use of action_type_enum, G.")
 
     # abstract_state and related functinos
     def Gostep_absract_state(self,**kargs):
