@@ -6,6 +6,7 @@ sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
 from ai.agent import Agent, ActionType, BopType, MoveType
 from ai.base_agent import BaseAgent
 from ai.map import Map
+import copy
 
 class agent_guize(Agent):
     def __init__(self):
@@ -19,7 +20,7 @@ class agent_guize(Agent):
         self.seat = None
         self.faction = None
         self.role = None
-        self.controllable_ops = None
+        self.controposble_ops = None
         self.team_info = None
         self.my_direction = None
         self.my_mission = None
@@ -37,10 +38,12 @@ class agent_guize(Agent):
 
         self.act = [] # list to save all commands generated.
 
-        self.state = {}
+        self.status = {}
         self.detected_state = {} 
 
         self.num = 0 
+
+        self.abstract_state = {}  # key 是装备ID，value是抽象状态
 
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
@@ -91,8 +94,10 @@ class agent_guize(Agent):
 
         self.num = 0 
 
+    # assistant functions 
     def get_detected_state(self,state):
         # it is assumed that only my state passed here.
+        # xxh 1226 legacy issues: how to get the state of emeny without the whole state?
         # 0106,it is said that detected enemy also included in my state.
         self.detected_state = []
         units = state["operators"]
@@ -100,10 +105,8 @@ class agent_guize(Agent):
             detected_IDs = unit["see_enemy_bop_ids"]
             for detected_ID in detected_IDs:
                 detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
-                # xxh 1226 legacy issues: how to get the state of emeny without the whole state?
                 self.detected_state = self.detected_state + detected_state_single
         return self.detected_state
-    
     def get_move_type(self, bop):
         """Get appropriate move type for a bop."""
         bop_type = bop["type"]
@@ -174,6 +177,16 @@ class agent_guize(Agent):
             pass 
 
         return prior_list
+    def get_pos(self,attacker_ID):
+        # just found pos according to attacker_ID
+        # print("get_pos: unfinished yet")
+        unit0 = self.get_bop(attacker_ID)
+        pos_0 = unit0["cur_hex"]
+        return pos_0
+
+    def distance(self, target_pos, attacker_pos):
+        print("distance: unfinished yet")
+        return 114514
 
     # basic AI interface.
     def _move_action(self,attacker_ID, target_pos):
@@ -276,10 +289,10 @@ class agent_guize(Agent):
         # "board" for all about on board and off board. 
         obj_id=attacker_ID
         total_actions = [] 
-        observation = self.state 
+        observation = self.status 
 
 
-        if obj_id not in self.controllable_ops:
+        if obj_id not in self.controposble_ops:
             return total_actions
         
         total_actions = observation["valid_actions"][attacker_ID]
@@ -326,16 +339,164 @@ class agent_guize(Agent):
         return total_actions
 
     # abstract_state and related functinos
-    def Gostep_absract_state(self,**kargs):
+    def Gostep_abstract_state(self,**kargs):
+        # 先更新一遍观测的东西，后面用到再说
+        self.detected_state = self.get_detected_state(self.status)
+        self.update_detectinfo(self.detected_state)  # 记录一些用于搞提前量的缓存
+
+        # 清理一下abstract_state,被摧毁了的东西就不要在放在里面了.
+        abstract_state_new = {}
+        filtered_status = self.__status_filter(self.status)
+        for attacker_ID in filtered_status:
+            if attacker_ID in self.abstract_state:
+                try:
+                    abstract_state_new[attacker_ID] = self.abstract_state[attacker_ID]
+                except:
+                    # 这个是用来处理新增加的单位的，主要是用于步兵上下车。
+                    abstract_state_new[attacker_ID] = {"abstract_state": "none"}
+            else:
+                # 下车之后的步兵在filtered_status有在abstract_state没有，得更新进去
+                abstract_state_new[attacker_ID] = {}
+
+        self.abstract_state = abstract_state_new
+
+        self.act = []
+        # 遍历一下abstract_state，把里面每个单位的命令都走一遍。
+        for my_ID in self.abstract_state:
+            my_abstract_state = self.abstract_state[my_ID]
+            if my_abstract_state == {}:
+                # 默认状态的处理
+                self.set_hidden_and_alert(my_ID)
+            else:
+                # 实际的处理
+                if my_abstract_state["abstract_state"] == "move_and_attack":
+                    self.__handle_move_and_attack(my_ID, my_abstract_state["target_pos"])
+                # elif my_abstract_state["abstract_state"] == "hidden_and_alert":
+                #     # self.__handle_hidden_and_alert(my_ID, kargs["GetLandForm"])  # 这个要取地形的，所以要从外面输入GetLandForm函数
+                #     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
+                # elif my_abstract_state["abstract_state"] == "partrol_and_monitor":
+                #     self.__handle_partrol_and_monitor(my_ID, my_abstract_state["target_pos"])
+                # elif my_abstract_state["abstract_state"] == "open_fire":
+                #     # self.__handle_open_fire(my_ID)
+                #     self.__handle_open_fire2(my_ID)  # 逻辑升级的open fire
+                # elif my_abstract_state["abstract_state"] == "follow_and_defend":
+                #     self.__handle_follow_and_defend(my_ID, my_abstract_state["VIP_ID"],
+                #                                     my_abstract_state["flag_stand_by"])
+                # elif my_abstract_state["abstract_state"] == "none":
+                #     self.__handle_none(my_ID)  # 这个就是纯纯的停止。
+                # elif my_abstract_state["abstract_state"] == "charge_and_xiache":
+                #     self.__handle_charge_and_xiache(my_ID, my_abstract_state["infantry_ID"],
+                #                                     my_abstract_state["target_pos"], my_abstract_state["flag_state"])
+                # elif my_abstract_state["abstract_state"] == "circle":
+                #     self.__handle_circle(my_ID, my_abstract_state["target_pos"], my_abstract_state["R"])
         pass
 
-    def set_move_and_attack(self):
-        pass 
+    def __status_filter(self):
+        print("__status_filter: unfinished yet.")
+        pass
+
+    def update_detectinfo(self, detectinfo):
+        # 处理一下缓存的探测。
+        # 好吧,这个并不需要。探测池子里面给到的“上一步”似乎是对的。
+        for target_ID in detectinfo:
+            for filter_ID in self.weapon_list:
+                if filter_ID in target_ID:
+                    continue  # 如果探测到的是弹药，那就不要了。
+
+            target_state = {}
+
+            target_state_single = {}
+            lon = detectinfo[target_ID]["targetLon"]
+            lat = detectinfo[target_ID]["targetLat"]
+            alt = detectinfo[target_ID]["targetAlt"]
+            pos = [lon, lat, alt]
+
+            target_state_single["pos"] = pos
+            target_state_single["num"] = self.num
+            if target_ID in self.detected_state2:
+                # 那就是有的
+                if "this" in self.detected_state2[target_ID]:
+                    # 反正暴力出奇迹，只存两步，线性插值，怎么简单怎么来。
+                    target_state["last"] = copy.deepcopy(self.detected_state2[target_ID]["this"])
+            target_state["this"] = copy.deepcopy(target_state_single)
+            self.detected_state2[target_ID] = target_state
+
+        # 整个过滤机制，时间太长的探测信息就直接不保存了
+        list_deleted = []
+        for target_ID in self.detected_state2:
+            if (self.num - self.detected_state2[target_ID]["this"]["num"]) > 500:
+                # 姑且是500帧之前的东西就认为是没用了。
+                list_deleted.append(target_ID)
+        for target_ID in list_deleted:
+            del self.detected_state2[target_ID]
+        return
+
+
+    def set_move_and_attack(self, attacker_ID, target_pos):
+        # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
+        if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
+            # 说明是直接把status输入进来了。那就得循环。
+            for attacker_ID_single in attacker_ID:
+                self.abstract_state[attacker_ID_single] = {"abstract_state": "move_and_attack",
+                                                           "target_pos": target_pos,
+                                                           "flag_moving": False, "jvli": 114514}
+        else:
+            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,
+                                                "flag_moving": False, "jvli": 114514}
+        pass
+
+    def __handle_move_and_attack(self, attacker_ID, target_pos):
+        # 这个是改进开火的。
+        flag_attack = True  # 调试，开始打炮了。
+
+        if flag_attack:
+            self._fire_action(attacker_ID)
+        else:
+            print("XXHtest: attack disabled in __handle_move_and_attack")
+
+        # 然后该打的打完了，就继续move呗
+        attacker_pos = self.get_pos(attacker_ID)
+        jvli = self.distance(target_pos[0], target_pos[1], target_pos[2],
+                             attacker_pos[0], attacker_pos[1], attacker_pos[2])  # 这里alt两个用成一样的，防止最后结束不了。
+        if jvli > 10:
+            # 那就是还没到，那就继续移动
+            if self.abstract_state[attacker_ID]["flag_moving"] == False:
+                # 那就是没动起来，那就得让它动起来。
+                self._move_action(attacker_ID, target_pos)
+                self.abstract_state[attacker_ID]["flag_moving"] = True
+            if (self.abstract_state[attacker_ID]["jvli"] == jvli) and (self.num>100):
+                self.__finish_abstract_state(attacker_ID)
+            else:
+                self.abstract_state[attacker_ID]["jvli"] = jvli
+        else:
+            # 那就是到了，那就要改抽象状态里面了。
+            self.__finish_abstract_state(attacker_ID)
+    
+
+    def __finish_abstract_state(self, attacker_ID):
+        # print("__finish_abstract_state: unfinished yet")
+        # 统一写一个完了之后清空的，因为也不完全是清空，还得操作一些办法。
+        # 暴力堆栈了其实是，笨是笨点但是有用。
+        if attacker_ID in self.abstract_state:
+            pass
+        else:
+            # 这个是用来处理步兵上下车逻辑的。上车之后删了，下车之后得出来
+            self.abstract_state[attacker_ID] = {}  # 统一取成空的，后面再统一变成能用的。
+
+        if "next" in self.abstract_state[attacker_ID]:
+            next_abstract_state = self.abstract_state[attacker_ID]['next']
+        else:
+            next_abstract_state = {}
+        self.abstract_state[attacker_ID] = next_abstract_state
+        pass
+
     # guize_functions
     def F2A(self):
+        print("F2A: unfinished yet")
         pass
 
     def group_A(self):
+        print("group_A: unfinished yet")
         pass
 
     # then step
@@ -348,10 +509,10 @@ class agent_guize(Agent):
             if self.num%100==99:
                 print("Debug, self.num = "+str(self.num))
         self.observation = observation
-        self.state = observation # so laji but fangbian.
+        self.status = observation # so laji but fangbian.
 
         self.team_info = observation["role_and_grouping_info"]
-        self.controllable_ops = observation["role_and_grouping_info"][self.seat][
+        self.controposble_ops = observation["role_and_grouping_info"][self.seat][
             "operators"
         ]
         communications = observation["communication"]
