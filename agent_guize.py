@@ -224,8 +224,8 @@ class agent_guize(Agent):
 
     def _fire_action(self,attacker_ID, target_ID="None", weapon_type="None"):
         # check if th fire action is valid.
-        # fire_actions = self._check_actions(attacker_ID, model="fire")
-        fire_actions = self._check_actions(attacker_ID, model="test")
+        fire_actions = self._check_actions(attacker_ID, model="fire")
+        # fire_actions = self._check_actions(attacker_ID, model="test")
         # if not, nothing happen.
         if len(fire_actions)>0:
             # get attack type
@@ -503,9 +503,8 @@ class agent_guize(Agent):
 
         # 然后该打的打完了，就继续move呗
         attacker_pos = self.get_pos(attacker_ID)
-        jvli = self.distance(target_pos[0], target_pos[1], target_pos[2],
-        attacker_pos[0], attacker_pos[1], attacker_pos[2])  # 这里alt两个用成一样的，防止最后结束不了。
-        if jvli > 10:
+        jvli = self.distance(target_pos,attacker_pos)  
+        if jvli > 0:
             # 那就是还没到，那就继续移动
             if self.abstract_state[attacker_ID]["flag_moving"] == False:
                 # 那就是没动起来，那就得让它动起来。
