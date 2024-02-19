@@ -202,7 +202,10 @@ class agent_guize(Agent):
             elif 9 in fire_actions:
                 attack_type = 9 # guided
             else:
-                raise Exception("_fire_action: invalid attack_type")
+                # raise Exception("_fire_action: invalid attack_type")
+                # it seems warning here is better, not exception.
+                print("_fire_action: invalid attack_type, did not fire")
+                return self.act
             
             target_list = fire_actions[attack_type]
             target_ID_list = [] 
@@ -220,14 +223,32 @@ class agent_guize(Agent):
                 target_ID_selected, index_target_ID = self._selecte_compare_list(target_ID, target_list)
             else:
                 # no target selected.
+                # best = max(candidate, key=lambda x: x["attack_level"])
+                # target_ID_selected = best["target_obj_id"]
+                # index_target_ID = ? 
+
                 target_ID_selected = target_ID_i[0]
                 index_target_ID = 0 
 
             # decide weapon_ID
             weappon_type_selected = weapon_type_list[index_target_ID]
+            # 0219 need debug here, about how to select weapon type. 
+
+            # then generate action
+            action_gen = {
+            "actor": self.seat,
+            "obj_id": attacker_ID,
+            "type": ActionType.Shoot,
+            "target_obj_id": target_ID_selected,
+            "weapon_id": weappon_type_selected,
+            }
+
+            self.act.append(action_gen)
+            return self.act
         else:
             # no valid fire_action here, nothing happen 
-            pass
+            print("_fire_action: no valid fire_action here, nothing happen")
+            return self.act
     
     def _selecte_compare_list(self, target_ID, target_ID_list):
         # give an obj(target_ID) and a list(target_ID_list), if the obj is in the list, then reture it and its index. 
@@ -247,7 +268,6 @@ class agent_guize(Agent):
             index_target_ID = 0 
 
         return target_ID_selected, index_target_ID
-
 
     def _check_actions(self, attacker_ID, model="void"):
         # found all valid action of attacker_ID.
@@ -305,11 +325,12 @@ class agent_guize(Agent):
         
         return total_actions
 
-
     # abstract_state and related functinos
     def Gostep_absract_state(self,**kargs):
         pass
 
+    def set_move_and_attack(self):
+        pass 
     # guize_functions
     def F2A(self):
         pass
