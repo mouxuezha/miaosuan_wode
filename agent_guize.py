@@ -102,12 +102,18 @@ class agent_guize(Agent):
         # 0106,it is said that detected enemy also included in my state.
         self.detected_state = []
         units = state["operators"]
-        for unit in units:
-            detected_IDs = unit["see_enemy_bop_ids"]
-            for detected_ID in detected_IDs:
-                detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
-                self.detected_state = self.detected_state + detected_state_single
+        
+        # for unit in units:
+        #     detected_IDs = unit["see_enemy_bop_ids"]
+        #     for detected_ID in detected_IDs:
+        #         detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
+        #         self.detected_state = self.detected_state + detected_state_single
+
+        color_enemy = 1 - self.color
+        self.detected_state = self.select_by_type(units,key="color", value=color_enemy)
+        
         return self.detected_state
+    
     def get_move_type(self, bop):
         """Get appropriate move type for a bop."""
         bop_type = bop["type"]
@@ -186,8 +192,15 @@ class agent_guize(Agent):
         return pos_0
 
     def get_ID_list(self,status):
-        
-        pass
+        # get iterable ID list from status or something like status.
+        operators_dict = status["operators"]
+        ID_list = [] 
+        for operator in operators_dict:
+            # filter, only my operators pass
+            if operator["color"] == self.color:
+                # my operators
+                ID_list.append(operator["obj_id"])
+        return ID_list
 
     def distance(self, target_pos, attacker_pos):
         jvli = self.map.get_distance(target_pos, attacker_pos)
@@ -344,6 +357,22 @@ class agent_guize(Agent):
         
         return total_actions
 
+    def _hidden_actiion(self,attacker_ID):
+        action_hidden =  {
+                "actor": self.seat,
+                "obj_id": attacker_ID,
+                "type": 6,
+                "target_state": 4,
+            }
+        # {
+        # "actor": "int 动作发出者席位",
+        # "obj_id": "算子ID int",
+        # "type": 6,
+        # "target_state": "目标状态 0-正常机动 1-行军 2-一级冲锋 3-二级冲锋, 4-掩蔽 5-半速"
+        # }
+        self.act.append(action_hidden)
+        return self.act
+
     # abstract_state and related functinos
     def Gostep_abstract_state(self,**kargs):
         # 先更新一遍观测的东西，后面用到再说
@@ -353,7 +382,8 @@ class agent_guize(Agent):
         # 清理一下abstract_state,被摧毁了的东西就不要在放在里面了.
         abstract_state_new = {}
         filtered_status = self.__status_filter(self.status)
-        for attacker_ID in filtered_status:
+        ID_list = self.get_ID_list(filtered_status)
+        for attacker_ID in ID_list:
             if attacker_ID in self.abstract_state:
                 try:
                     abstract_state_new[attacker_ID] = self.abstract_state[attacker_ID]
@@ -377,9 +407,8 @@ class agent_guize(Agent):
                 # 实际的处理
                 if my_abstract_state["abstract_state"] == "move_and_attack":
                     self.__handle_move_and_attack(my_ID, my_abstract_state["target_pos"])
-                # elif my_abstract_state["abstract_state"] == "hidden_and_alert":
-                #     # self.__handle_hidden_and_alert(my_ID, kargs["GetLandForm"])  # 这个要取地形的，所以要从外面输入GetLandForm函数
-                #     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
+                elif my_abstract_state["abstract_state"] == "hidden_and_alert":
+                    self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
                 # elif my_abstract_state["abstract_state"] == "partrol_and_monitor":
                 #     self.__handle_partrol_and_monitor(my_ID, my_abstract_state["target_pos"])
                 # elif my_abstract_state["abstract_state"] == "open_fire":
@@ -452,6 +481,17 @@ class agent_guize(Agent):
             self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,            "flag_moving": False, "jvli": 114514}
         pass
 
+    def set_hidden_and_alert(self, attacker_ID):
+        # 这个就是原地坐下，调成隐蔽状态。
+        # TODO: 不是原地坐下了，要找周围好的地形。
+        if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
+            # 说明是直接把status输入进来了。那就得循环。
+            for attacker_ID_single in attacker_ID:
+                self.abstract_state[attacker_ID_single] = {"abstract_state": "hidden_and_alert", "flag_shelter": False}
+        else:
+            self.abstract_state[attacker_ID] = {"abstract_state": "hidden_and_alert", "flag_shelter": False}
+        pass
+
     def __handle_move_and_attack(self, attacker_ID, target_pos):
         # 这个是改进开火的。
         flag_attack = True  # 调试，开始打炮了。
@@ -479,6 +519,11 @@ class agent_guize(Agent):
             # 那就是到了，那就要改抽象状态里面了。
             self.__finish_abstract_state(attacker_ID)
     
+    def __handle_hidden_and_alert(self, attacker_ID):
+        # 先来个基础版的，原地蹲下，不要取地形了。
+        # 0219: 这个可能有风险，它这里面开始状态转换之后似乎就走不了了
+        self._hidden_actiion(attacker_ID)
+        pass
 
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
