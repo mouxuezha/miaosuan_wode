@@ -168,14 +168,6 @@ class agent_guize(Agent):
             prior_list = [0,1,4,-1] # only one shot.
         elif unit_type == 8: # transport helicopter 
             prior_list = [] # unused yet 
-        # elif unit_type == 5: # UAV 
-        #     pass 
-        # elif unit_type == 6: # helicopter
-        #     pass
-        # elif unit_type == 7: # xunfei missile
-        #     pass 
-        # elif unit_type == 8: # transport helicopter 
-        #     pass 
         else:
             raise Exception("XXH: invalid unit_type in get_prior_list, G. ")
             prior_list = [0, 1, 4, -1]
@@ -198,17 +190,10 @@ class agent_guize(Agent):
         self.act.append(action_move)
         return self.act
 
-    def _attack_action(self,attacker_ID, target_ID="None", weapon_type="None"):
+    def _fire_action(self,attacker_ID, target_ID="None", weapon_type="None"):
         # check if th fire action is valid.
         # fire_actions = self._check_actions(attacker_ID, model="fire")
         fire_actions = self._check_actions(attacker_ID, model="test")
-
-        # if so, shoot.
-        if(len(attack_action_list)>0):
-            self.act += attack_action_list
-
-        # unfinished yet 20240115
-        烫烫烫烫烫烫烫烫烫
         # if not, nothing happen.
         if len(fire_actions)>0:
             # get attack type
