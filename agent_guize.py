@@ -390,6 +390,7 @@ class agent_guize(Agent):
                 except:
                     # 这个是用来处理新增加的单位的，主要是用于步兵上下车。
                     abstract_state_new[attacker_ID] = {"abstract_state": "none"}
+                    # self.set_none(attacker_ID)
             else:
                 # 下车之后的步兵在filtered_status有在abstract_state没有，得更新进去
                 abstract_state_new[attacker_ID] = {}
@@ -401,8 +402,9 @@ class agent_guize(Agent):
         for my_ID in self.abstract_state:
             my_abstract_state = self.abstract_state[my_ID]
             if my_abstract_state == {}:
-                # 默认状态的处理
+                # 默认状态的处理, it still needs discuss, about which to use.
                 self.set_hidden_and_alert(my_ID)
+                self.set_none(my_ID) 
             else:
                 # 实际的处理
                 if my_abstract_state["abstract_state"] == "move_and_attack":
@@ -417,8 +419,8 @@ class agent_guize(Agent):
                 # elif my_abstract_state["abstract_state"] == "follow_and_defend":
                 #     self.__handle_follow_and_defend(my_ID, my_abstract_state["VIP_ID"],
                 #                                     my_abstract_state["flag_stand_by"])
-                # elif my_abstract_state["abstract_state"] == "none":
-                #     self.__handle_none(my_ID)  # 这个就是纯纯的停止。
+                elif my_abstract_state["abstract_state"] == "none":
+                    self.__handle_none(my_ID)  # 这个就是纯纯的停止。
                 # elif my_abstract_state["abstract_state"] == "charge_and_xiache":
                 #     self.__handle_charge_and_xiache(my_ID, my_abstract_state["infantry_ID"],
                 #                                     my_abstract_state["target_pos"], my_abstract_state["flag_state"])
@@ -492,6 +494,12 @@ class agent_guize(Agent):
             self.abstract_state[attacker_ID] = {"abstract_state": "hidden_and_alert", "flag_shelter": False}
         pass
 
+    def set_none(self,attacker_ID):
+        # yangjian xiefa, all set_none operations use this function, rather than modifing abstract_state directly.
+        self.abstract_state[attacker_ID] = {"abstract_state": "none"}
+        # pass 
+
+
     def __handle_move_and_attack(self, attacker_ID, target_pos):
         # 这个是改进开火的。
         flag_attack = True  # 调试，开始打炮了。
@@ -523,6 +531,10 @@ class agent_guize(Agent):
         # 0219: 这个可能有风险，它这里面开始状态转换之后似乎就走不了了
         self._hidden_actiion(attacker_ID)
         pass
+
+    def __handle_none(self, attacker_ID):
+        # nothing happen, literaly
+        pass 
 
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
@@ -576,7 +588,7 @@ class agent_guize(Agent):
         self.step0()
 
         # update the actions
-        self.Gostep_absract_state()
+        self.Gostep_abstract_state()
 
         return self.act
 
@@ -595,4 +607,4 @@ class agent_guize(Agent):
             self._check_actions(unit0["obj_id"], model="fire")
         pass
         
-        self.Gostep_abstract_state()
+        # self.Gostep_abstract_state()
