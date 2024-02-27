@@ -5,4 +5,6 @@ this is to shishi miaosuan 2023 AI game
 the link of this this game: http://turingai.ia.ac.cn/data_center/show/10
 "2023庙算杯人机混合对抗赛-智能体选拔赛SDK"
 
-输入服务器地址（http://wargame.ia.ac.cn:8080/2DREPLAY），登录“陆军战术兵棋推演复盘系统”
+输入服务器地址（http://wargame.ia.ac.cn:8080/2DREPLAY），登录“陆军战术兵棋推演复盘系统”（2024年2月27日15:55:36这个寄了）
+
+正确的复盘系统：http://wargame.ia.ac.cn/newReplay
