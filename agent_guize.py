@@ -325,6 +325,8 @@ class agent_guize(Agent):
                 selected_action_list = [2,9]
             elif model == "board":
                 selected_action_list = [3,4] 
+            elif model == "jieju":
+                selected_action_list = [14] 
             elif model == "test":
                 selected_action_list = [] 
                 for i in range(10):
@@ -373,6 +375,24 @@ class agent_guize(Agent):
         self.act.append(action_hidden)
         return self.act
 
+    def _jieju_action(self,attacker_ID):
+        candidate_actions = self._check_actions(attacker_ID,model="jieju")
+        action_jieju = {} 
+        flag_done = False
+        if len(candidate_actions)>0:
+            action_jieju = {
+                "actor": self.seat,
+                "obj_id": attacker_ID,
+                "type": 14
+            }
+            flag_done = True
+        else:
+            # raise Exception("_jieju_action: invalid action here.")
+            flag_done = False
+        
+        self.act.append(action_jieju)
+        return self.act,flag_done
+
     # abstract_state and related functinos
     def Gostep_abstract_state(self,**kargs):
         # 先更新一遍观测的东西，后面用到再说
@@ -403,8 +423,9 @@ class agent_guize(Agent):
             my_abstract_state = self.abstract_state[my_ID]
             if my_abstract_state == {}:
                 # 默认状态的处理, it still needs discuss, about which to use.
-                self.set_hidden_and_alert(my_ID)
-                self.set_none(my_ID) 
+                # self.set_hidden_and_alert(my_ID)
+                # self.set_none(my_ID) 
+                self.set_jieju(my_ID) 
             else:
                 # 实际的处理
                 if my_abstract_state["abstract_state"] == "move_and_attack":
@@ -426,6 +447,8 @@ class agent_guize(Agent):
                 #                                     my_abstract_state["target_pos"], my_abstract_state["flag_state"])
                 # elif my_abstract_state["abstract_state"] == "circle":
                 #     self.__handle_circle(my_ID, my_abstract_state["target_pos"], my_abstract_state["R"])
+                elif my_abstract_state["abstract_state"] == "jieju":
+                    self.__handle_jieju(my_ID) # 解聚，解完了就会自动变成none的。
         pass
 
     def __status_filter(self,status):
@@ -470,7 +493,6 @@ class agent_guize(Agent):
             del self.detected_state2[target_ID]
         return
 
-
     def set_move_and_attack(self, attacker_ID, target_pos):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
         if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
@@ -498,6 +520,10 @@ class agent_guize(Agent):
         # yangjian xiefa, all set_none operations use this function, rather than modifing abstract_state directly.
         self.abstract_state[attacker_ID] = {"abstract_state": "none"}
         # pass 
+    
+    def set_jieju(self, attacker_ID):
+        # just jieju if it is possible. 
+        self.absract_state[attacker_ID] = {"abstract_state": "jieju"}
 
 
     def __handle_move_and_attack(self, attacker_ID, target_pos):
@@ -536,6 +562,16 @@ class agent_guize(Agent):
         # nothing happen, literaly
         pass 
 
+    def __handle_jieju(self, attacker_ID):
+        # if it can be jieju, then jieju, or change the abstract_state.
+        self.act,flag_done = self._jieju_action(attacker_ID)
+        if flag_done==False:
+            # can not jieju anymore, change to none.
+            self.set_none(attacker_ID)
+        else:
+            # finish jieju for one time, try to jieju further.
+            pass
+
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
         # 统一写一个完了之后清空的，因为也不完全是清空，还得操作一些办法。
@@ -561,6 +597,22 @@ class agent_guize(Agent):
     def group_A(self):
         print("group_A: unfinished yet")
         pass
+
+    def get_target_cross_fire(self):
+        # call one time for one game.
+        observation = self.status
+        communications = observation["communication"]
+        flag_done = False
+        for command in communications:
+            if command["type"] in [201] and command["info"]["company_id"] == self.seat:
+                self.my_direction = command
+                self.target_pos = self.my_direction["info"]["target_pos"]
+                flag_done = True
+        if flag_done==False:
+            raise Exception("get_target_cross_fire: G!")
+        else:
+            print("get_target_cross_fire: Done.")
+        return  self.target_pos
 
     # then step
     def step(self, observation: dict):
@@ -608,3 +660,22 @@ class agent_guize(Agent):
         pass
         
         # self.Gostep_abstract_state()
+    
+    def step_cross_fire(self):
+        # this is to tackle cross_fire.
+
+        # get the target first.
+        target_pos = self.get_target_cross_fire()
+
+        # 解聚解到彻底没有婕德。
+        # then move to there.
+        ID_list = self.get_ID_list(self.status)
+        for attacker_ID in ID_list:
+            if len(self._check_actions(attacker_ID, model="jieju"))>0:
+                # then jieju
+                self.set_jieju(attacker_ID)
+            else:
+                # then go. 
+                self.set_move_and_attack(attacker_ID, target_pos)
+
+
