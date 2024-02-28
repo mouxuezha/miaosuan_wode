@@ -39,12 +39,16 @@ class agent_guize(Agent):
         self.act = [] # list to save all commands generated.
 
         self.status = {}
+        self.status_old = {} 
         self.detected_state = {} 
         self.detected_state2 = {} 
 
         self.num = 0 
 
         self.abstract_state = {}  # key 是装备ID，value是抽象状态
+
+        self.threaten_source_set = set() # 这个是用来避障的。元素是dic，包括威胁源的位置、种类和时间延迟，后面不够再来补充可也。{pos: int , type: int, delay: int} # 不需要标记时间炮火持续时间那种，持续完了直接删了就行了。但是飞行中是要标记的。
+        # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost 
 
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
@@ -401,7 +405,9 @@ class agent_guize(Agent):
     def Gostep_abstract_state(self,**kargs):
         # 先更新一遍观测的东西，后面用到再说
         self.detected_state = self.get_detected_state(self.status)
-        self.update_detectinfo(self.detected_state)  # 记录一些用于搞提前量的缓存
+        # self.update_detectinfo(self.detected_state)  # 记录一些用于搞提前量的缓存
+
+        self.update_field() 
 
         # 清理一下abstract_state,被摧毁了的东西就不要在放在里面了.
         abstract_state_new = {}
@@ -458,6 +464,62 @@ class agent_guize(Agent):
     def __status_filter(self,status):
         print("__status_filter: unfinished yet.")
         return status
+    
+    def update_threaten_source(self):
+        # 0228 现在的逻辑是每一步update 一次，其实比较冗余。好处是不用考虑threaten_source_set里不同时间步的东西的说法。
+        # 敌人首先得整进来。
+        # units = self.status["operators"]
+        # units_enemy = self.select_by_type(units,str="obj_id",value=1)
+        units_enemy = self.detected_state
+
+        for unit in units_enemy:
+            # {pos: int , type: int, delay: int}
+            threaten_source_single = {"pos":unit["cur_hex"], "type":0, "delay":0}
+            self.threaten_source_set.add(threaten_source_single)
+
+        # 然后是炮火打过来的点
+        artillery_point_list = self.status["jm_points"]
+        for artillery_point_single in artillery_point_list:
+            if artillery_point_single["status"] == 1: # 在爆炸
+                threaten_source_single = {"pos":artillery_point_single["pos"], "type":1, "delay":0}
+            elif artillery_point_single["status"] == 0: # 在飞行
+                threaten_source_single = {"pos":artillery_point_single["pos"], "type":1, "delay":150-artillery_point_single["fly_time"]}
+            else:
+                pass # 失效了
+            self.threaten_source_set.add(threaten_source_single)
+        
+        # 然后是有单位损失的位置,通过比较status_old和status来给出，所以这个函数要放在更新abstract_state之前。
+        ID_list_now = self.get_ID_list(self.status)
+        ID_list_old = self.get_ID_list(self.status_old)
+        for ID in ID_list_old:
+            flag = not(ID in ID_list_now ) 
+            if flag:
+                # unit lost
+                threaten_source_single = {"pos":self.get_pos(ID), "type":2, "delay":0}
+                self.threaten_source_set.add(threaten_source_single)
+
+    def update_field(self):
+        # 标量场的话，得选定需要计算的范围，搞精细一点，所有单位的周围几个格子，然后还是得有个机制检验要不要变轨
+        # 矢量场的话，似乎直接给每个单位算个斥力就行了？还简单点。
+        # 不对，这可恶的六角格，算不了矢量场啊好像。
+        # 总之这个放在GoStep里。
+
+        # 选定所有单位周围的两个格子，然后去重
+        distance_start = 0 
+        distance_end = 2 
+        ID_list = self.get_ID_list(self.status)
+        pos_set = set() 
+        for attacker_ID in ID_list:
+            pos_attacker = self.get_pos(attacker_ID)
+            pos_set_single = Map.get_grid_distance(pos_attacker, distance_start, distance_end)
+            pos_set = pos_set | pos_set_single
+        
+        # 选定所有单位的格子好了
+
+        # 然后更新影响的来源，标量场嘛无所谓了。
+        self.update_threaten_source()
+
+        print("update_field: unfinished yet")
 
     def update_detectinfo(self, detectinfo):
         print("update_detectinfo: not finished yet, and it seems not necessarry")
@@ -623,6 +685,7 @@ class agent_guize(Agent):
             print("get_target_cross_fire: Done.")
         return  self.target_pos
 
+
     # then step
     def step(self, observation: dict):
 
@@ -676,16 +739,21 @@ class agent_guize(Agent):
 
         # get the target first.
         target_pos = self.get_target_cross_fire()
-
-        # 解聚解到彻底没有婕德。
-        # then move to there.
-        ID_list = self.get_ID_list(self.status)
-        for attacker_ID in ID_list:
-            if len(self._check_actions(attacker_ID, model="jieju"))>0:
-                # then jieju
-                self.set_jieju(attacker_ID)
-            else:
-                # then go. 
-                self.set_move_and_attack(attacker_ID, target_pos)
+        
+        if self.num<200:
+            # 解聚解到彻底没有婕德。
+            # then move to there.
+            ID_list = self.get_ID_list(self.status)
+            for attacker_ID in ID_list:
+                if len(self._check_actions(attacker_ID, model="jieju"))>0:
+                    # then jieju
+                    self.set_jieju(attacker_ID)
+                else:
+                    # then go. 
+                    self.set_move_and_attack(attacker_ID, target_pos)
+        elif self.num % 100:
+            # check if the path is safe. 
+            pass
+            # deal with UAV.
 
 
