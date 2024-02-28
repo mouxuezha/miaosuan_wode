@@ -274,12 +274,12 @@ class agent_guize(Agent):
             "target_obj_id": target_ID_selected,
             "weapon_id": weappon_type_selected,
             }
-
+            print("_fire_action: done")
             self.act.append(action_gen)
             return self.act
         else:
             # no valid fire_action here, nothing happen 
-            print("_fire_action: no valid fire_action here, nothing happen")
+            # print("_fire_action: no valid fire_action here, nothing happen")
             return self.act
     
     def _selecte_compare_list(self, target_ID, target_ID_list):
@@ -307,14 +307,18 @@ class agent_guize(Agent):
         # "fire" fire for return all valid fire action
         # "board" for all about on board and off board. 
         obj_id=attacker_ID
-        total_actions = [] 
+        total_actions = {} 
         observation = self.status 
 
 
         if obj_id not in self.controposble_ops:
             return total_actions
         
-        total_actions = observation["valid_actions"][attacker_ID]
+        try:
+            total_actions = observation["valid_actions"][attacker_ID]
+        except:
+            print("no valid_actions here")
+            total_actions = {}
 
         if model == "void":
             # if model is "void", then skip selection and return the total actions.
@@ -523,7 +527,7 @@ class agent_guize(Agent):
     
     def set_jieju(self, attacker_ID):
         # just jieju if it is possible. 
-        self.absract_state[attacker_ID] = {"abstract_state": "jieju"}
+        self.abstract_state[attacker_ID] = {"abstract_state": "jieju"}
 
 
     def __handle_move_and_attack(self, attacker_ID, target_pos):
@@ -604,9 +608,14 @@ class agent_guize(Agent):
         communications = observation["communication"]
         flag_done = False
         for command in communications:
-            if command["type"] in [201] and command["info"]["company_id"] == self.seat:
+        #     if command["type"] in [210] and command["info"]["company_id"] == self.seat:
+        #         self.my_direction = command
+        #         self.target_pos = self.my_direction["info"]["target_pos"]
+        #         flag_done = True
+            if command["type"] in [210] :
                 self.my_direction = command
-                self.target_pos = self.my_direction["info"]["target_pos"]
+                self.target_pos = self.my_direction["hex"]
+                self.end_time = self.my_direction["end_time"]
                 flag_done = True
         if flag_done==False:
             raise Exception("get_target_cross_fire: G!")
@@ -637,7 +646,8 @@ class agent_guize(Agent):
         detected_state = self.get_detected_state(observation)
         
         # the real tactics in step*() function.
-        self.step0()
+        # self.step0()
+        self.step_cross_fire()
 
         # update the actions
         self.Gostep_abstract_state()
