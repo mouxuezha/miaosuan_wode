@@ -48,7 +48,8 @@ class agent_guize(Agent):
         self.abstract_state = {}  # key 是装备ID，value是抽象状态
 
         self.threaten_source_set = set() # 这个是用来避障的。元素是dic，包括威胁源的位置、种类和时间延迟，后面不够再来补充可也。{pos: int , type: int, delay: int} # 不需要标记时间炮火持续时间那种，持续完了直接删了就行了。但是飞行中是要标记的。
-        # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost 
+        # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost . -1 for my unit, negative threaten
+        self.threaten_field = [] # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos:int, field_value: double}
 
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
@@ -137,9 +138,13 @@ class agent_guize(Agent):
         )
         with open(SCENARIO_INFO_PATH, encoding="utf8") as f:
             self.scenario_info = json.load(f)
-    def get_bop(self, obj_id):
+    def get_bop(self, obj_id, **kargs):
         """Get bop in my observation based on its id."""
-        for bop in self.observation["operators"]:
+        if "status" in kargs:
+            observation = kargs["status"]
+        else:
+            observation = self.observation
+        for bop in observation["operators"]:
             if obj_id == bop["obj_id"]:
                 return bop
     def select_by_type(self,units,key="obj_id",value=0):
@@ -188,10 +193,10 @@ class agent_guize(Agent):
             pass 
 
         return prior_list
-    def get_pos(self,attacker_ID):
+    def get_pos(self,attacker_ID, **kargs):
         # just found pos according to attacker_ID
         # print("get_pos: unfinished yet")
-        unit0 = self.get_bop(attacker_ID)
+        unit0 = self.get_bop(attacker_ID,kargs)
         pos_0 = unit0["cur_hex"]
         return pos_0
 
@@ -466,7 +471,19 @@ class agent_guize(Agent):
         return status
     
     def update_threaten_source(self):
-        # 0228 现在的逻辑是每一步update 一次，其实比较冗余。好处是不用考虑threaten_source_set里不同时间步的东西的说法。
+        # 0229 单位损失得储存，别的倒是不太有所谓。
+
+        # 要跨步骤存的先拿出来好了。
+        threaten_source_set_type2 = set() 
+        for source_single in self.threaten_source_set:
+            if source_single["type"] == 2:
+                source_single["delay"] = source_single["delay"] - 1 
+                if source_single["delay"]>=0:
+                    threaten_source_set_type2.add(source_single)
+        
+        # 然后清了，重新再开
+        self.threaten_source_set = set()             
+
         # 敌人首先得整进来。
         # units = self.status["operators"]
         # units_enemy = self.select_by_type(units,str="obj_id",value=1)
@@ -495,8 +512,18 @@ class agent_guize(Agent):
             flag = not(ID in ID_list_now ) 
             if flag:
                 # unit lost
-                threaten_source_single = {"pos":self.get_pos(ID), "type":2, "delay":0}
+                threaten_source_single = {"pos":self.get_pos(ID,status=self.status_old), "type":2, "delay":70}
                 self.threaten_source_set.add(threaten_source_single)
+
+        # “旁边有己方单位的地方更加安全”，所以己方单位作为一个负的威胁源，或者说威胁汇，恐怕是成立的。
+        for ID in ID_list_now:
+            threaten_source_single = {"pos":self.get_pos(ID), "type":-1} 
+
+
+        # 最后把上一步需要持续考虑的算进来，岂不美哉。
+        self.threaten_source_set =  self.threaten_source_set  + threaten_source_set_type2
+
+        return self.threaten_source_set
 
     def update_field(self):
         # 标量场的话，得选定需要计算的范围，搞精细一点，所有单位的周围几个格子，然后还是得有个机制检验要不要变轨
@@ -517,9 +544,49 @@ class agent_guize(Agent):
         # 选定所有单位的格子好了
 
         # 然后更新影响的来源，标量场嘛无所谓了。
-        self.update_threaten_source()
+        self.threaten_source_set = self.update_threaten_source()
 
-        print("update_field: unfinished yet")
+        # 然后更新那一堆点里面的标量场。
+        self.threaten_field = [] 
+        for pos_single in pos_set:
+            field_value = self.update_field_single(pos_single, self.threaten_source_set)
+            threaden_field_single = {"pos":pos_single , "field_value": field_value}
+            self.threaten_field.append(threaden_field_single)
+        
+        # need debug 0229
+            
+        
+        print("update_field: finished, but was not used to modify the path yet, 0229")
+        
+        return self.threaten_field
+    
+    def update_field_single(self, pos_single, threaten_source_set):
+        # 虽然可以直接self.调用，但是还是搞成显式的输入输出比较好。
+        # TODO：还可以精细化一些，对不同类型的单位可以分别定义势场。
+        for threaten_source in threaten_source_set:
+            # 求出两个格子的距离
+            jvli = Map.get_distance(pos_single,threaten_source["pos"])
+
+            # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost 
+            a1 = 10 
+            a2 = 1 
+            if threaten_source["type"] == 0:
+                # 有敌方单位，就别去送了。
+                field_value = a1 / (a2 + jvli) # never touch the enemy. 
+            elif threaten_source["type"] == 1:
+                # 有炮火覆盖的地方，如果快开始爆炸了就别过去送了，绕一下。
+                if threaten_source["delay"] == 0:
+                    field_value = a1 / (a2 + 1 + jvli)
+            elif threaten_source["type"] == 2: 
+                # 之前有东西损失过的地方，如果人家CD快转好了就别过去送了，绕一下。
+                if threaten_source["delay"] < 30:
+                    field_value = a1 / (a2 + 1 + jvli)
+            elif threaten_source["type"] == -1:
+                # 有己方单位存活，认为那附近安全一点。负的威胁度
+                field_value = -1*a1*0.3 / (a2 + 1 + jvli)
+            
+            return field_value
+
 
     def update_detectinfo(self, detectinfo):
         print("update_detectinfo: not finished yet, and it seems not necessarry")
