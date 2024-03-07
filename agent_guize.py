@@ -28,7 +28,7 @@ class agent_guize(Agent):
         self.user_id = None
         self.history = None
         # abstract_state is useful
-        self.absract_state = {} 
+        self.abstract_state = {} 
         # ["move_and_attack", only for tank, 
         # "move_and_attack2", for other units
         # "follow_and_guard",  
@@ -49,7 +49,7 @@ class agent_guize(Agent):
 
         self.threaten_source_set = set() # 这个是用来避障的。元素是dic，包括威胁源的位置、种类和时间延迟，后面不够再来补充可也。{pos: int , type: int, delay: int} # 不需要标记时间炮火持续时间那种，持续完了直接删了就行了。但是飞行中是要标记的。
         # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost . -1 for my unit, negative threaten
-        self.threaten_field = [] # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos:int, field_value: double}
+        self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
 
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
@@ -140,6 +140,7 @@ class agent_guize(Agent):
             self.scenario_info = json.load(f)
     def get_bop(self, obj_id, **kargs):
         """Get bop in my observation based on its id."""
+        # 这个实现好像有点那啥，循环里带循环的，后面看看有没有机会整个好点的。xxh0307
         if "status" in kargs:
             observation = kargs["status"]
         else:
@@ -200,6 +201,12 @@ class agent_guize(Agent):
         pos_0 = unit0["cur_hex"]
         return pos_0
 
+    def is_stop(self,attacker_ID):
+        # 这个就是单纯判断一下这东西是不是停着
+        unit = self.get_bop(attacker_ID)
+        flag_is_stop = unit["stop"]
+        return flag_is_stop 
+
     def get_ID_list(self,status):
         # get iterable ID list from status or something like status.
         operators_dict = status["operators"]
@@ -229,6 +236,16 @@ class agent_guize(Agent):
                 "move_path": route,
             }
         self.act.append(action_move)
+        return self.act
+
+    def _stop_action(self,attacker_ID):
+        # 简简单单stop，没什么好说的
+        action_stop = {
+                "actor": self.seat,
+                "obj_id": attacker_ID,
+                "type": ActionType.StopMove
+                }
+        self.act.append(action_stop)
         return self.act
 
     def _fire_action(self,attacker_ID, target_ID="None", weapon_type="None"):
@@ -444,14 +461,14 @@ class agent_guize(Agent):
             else:
                 # 实际的处理
                 if my_abstract_state["abstract_state"] == "move_and_attack":
-                    self.__handle_move_and_attack(my_ID, my_abstract_state["target_pos"])
+                    # self.__handle_move_and_attack(my_ID, my_abstract_state["target_pos"])
+                    self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
                 elif my_abstract_state["abstract_state"] == "hidden_and_alert":
                     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
                 # elif my_abstract_state["abstract_state"] == "partrol_and_monitor":
                 #     self.__handle_partrol_and_monitor(my_ID, my_abstract_state["target_pos"])
-                # elif my_abstract_state["abstract_state"] == "open_fire":
-                #     # self.__handle_open_fire(my_ID)
-                #     self.__handle_open_fire2(my_ID)  # 逻辑升级的open fire
+                elif my_abstract_state["abstract_state"] == "open_fire":
+                    self.__handle_open_fire(my_ID)
                 # elif my_abstract_state["abstract_state"] == "follow_and_defend":
                 #     self.__handle_follow_and_defend(my_ID, my_abstract_state["VIP_ID"],
                 #                                     my_abstract_state["flag_stand_by"])
@@ -460,10 +477,10 @@ class agent_guize(Agent):
                 # elif my_abstract_state["abstract_state"] == "charge_and_xiache":
                 #     self.__handle_charge_and_xiache(my_ID, my_abstract_state["infantry_ID"],
                 #                                     my_abstract_state["target_pos"], my_abstract_state["flag_state"])
-                # elif my_abstract_state["abstract_state"] == "circle":
-                #     self.__handle_circle(my_ID, my_abstract_state["target_pos"], my_abstract_state["R"])
                 elif my_abstract_state["abstract_state"] == "jieju":
                     self.__handle_jieju(my_ID) # 解聚，解完了就会自动变成none的。
+                elif my_abstract_state["abstract_state"] == "UAV_move_on":
+                    self.__handle_UAV_move_on(my_ID)
         pass
 
     def __status_filter(self,status):
@@ -547,15 +564,15 @@ class agent_guize(Agent):
         self.threaten_source_set = self.update_threaten_source()
 
         # 然后更新那一堆点里面的标量场。
-        self.threaten_field = [] 
+        self.threaten_field = {}
         for pos_single in pos_set:
             field_value = self.update_field_single(pos_single, self.threaten_source_set)
-            threaden_field_single = {"pos":pos_single , "field_value": field_value}
-            self.threaten_field.append(threaden_field_single)
+            threaden_field_single = {pos_single:field_value}
+            self.threaten_field.update(threaden_field_single)
+            
         
         # need debug 0229
             
-        
         print("update_field: finished, but was not used to modify the path yet, 0229")
         
         return self.threaten_field
@@ -568,7 +585,7 @@ class agent_guize(Agent):
             jvli = Map.get_distance(pos_single,threaten_source["pos"])
 
             # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost 
-            a1 = 10 
+            a1 = 10 # 在敌人那格，0距离，type=0，thus field=a1
             a2 = 1 
             if threaten_source["type"] == 0:
                 # 有敌方单位，就别去送了。
@@ -583,10 +600,9 @@ class agent_guize(Agent):
                     field_value = a1 / (a2 + 1 + jvli)
             elif threaten_source["type"] == -1:
                 # 有己方单位存活，认为那附近安全一点。负的威胁度
-                field_value = -1*a1*0.3 / (a2 + 1 + jvli)
+                field_value = -1*a1*0.2 / (a2 + 1 + jvli)
             
             return field_value
-
 
     def update_detectinfo(self, detectinfo):
         print("update_detectinfo: not finished yet, and it seems not necessarry")
@@ -658,9 +674,26 @@ class agent_guize(Agent):
         # just jieju if it is possible. 
         self.abstract_state[attacker_ID] = {"abstract_state": "jieju"}
 
+    def set_open_fire(self,attacker_ID):
+        # 对只能站定打的东西来说，这个状态就有意义了。
+        self.abstract_state[attacker_ID]={"abstract_state":"open_fire"}
+        # 现在这版还没有集火的说法，就是单纯的能打谁就打谁。
+        # 因为假设了这个庙算是一个“开火稀疏”的场景，所以能打就打应该是没问题的。
+
+    def set_UAV_move_on(self,attacker_ID, target_pos):
+        # 这个用来处理UAV的行动，基本逻辑是如果有敌人就飞到敌人旁边去定下来等着打引导打击。
+        # 所以还得改个标志位，来体现是不是有东西能够提供引导打击。
+
+        # 记录一下现有的 # 不对，逻辑上这个应该在set_UAV_move_on之前，别给他整乱了
+        # 不对就应该放这儿，UAV的逻辑应该是那种飞过去打一波走了的逻辑，应该自带状态转换。看起来就算是空状态也不影响这个状态转换的逻辑
+        abstract_state_previous = copy.deepcopy(self.abstract_state[attacker_ID])
+        self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,
+                                         "flag_moving": False, "jvli": 114514, "flag_attacked":False}
+        self.abstract_state[attacker_ID]["next"] = abstract_state_previous
+
 
     def __handle_move_and_attack(self, attacker_ID, target_pos):
-        # 这个是改进开火的。
+        # 这个是改进开火的。不带避障
         flag_attack = True  # 调试，开始打炮了。
 
         if flag_attack:
@@ -685,9 +718,57 @@ class agent_guize(Agent):
             # 那就是到了，那就要改抽象状态里面了。
             self.__finish_abstract_state(attacker_ID)
     
+    def __handle_move_and_attack2(self,attacker_ID,target_pos):
+        # 这个是新版的，带基于势场的避障。
+        flag_attack = True  # 调试，开始打炮了。
+
+        if flag_attack:
+            self._fire_action(attacker_ID)
+        else:
+            print("XXHtest: attack disabled in __handle_move_and_attack")
+
+        # 然后该打的打完了，就继续move呗
+        attacker_pos = self.get_pos(attacker_ID)
+
+        # 这版的避障逻辑：检测周围一圈的格子，如果有势场大于某个阈值的，就触发避障，找势场最小的方向去先走一格。
+        # 为了防止卡住，得整个随机的，找势场最小的两格随机一个。# TODO: need debug 0307
+        # 于是先检测周围一圈的格子：
+        neighbor_pos_list = Map.get_neighbors(self,attacker_pos)
+        neighbor_field_list = [] 
+        for i in range(neighbor_pos_list):
+            neighbor_pos_single = neighbor_pos_list[i]
+            neighbor_field_single = self.threaten_field[neighbor_pos_single]
+            neighbor_field_list.append(neighbor_field_single)
+        # 于是再检测阈值，看有没有超过的，如果有就躲一下，没有就继续往目标去。
+        if max(neighbor_field_list)>10:
+            # 说明附近威胁有点大，触发规避动作
+            # 触发规避，就找威胁最小的那个格子然后过去。
+            neighbor_field_min = min(neighbor_field_list)
+            neighbor_field_min_index = neighbor_field_list.index(neighbor_field_min)
+            neighbor_field_min_pos = neighbor_pos_list[neighbor_field_min_index]
+            # 这下定位出威胁最小的那个格子了，那过去吧。
+            self._move_action(attacker_ID, neighbor_field_min_pos)
+        else:
+            # 说明附近威胁尚可，那就无事发生，还是采用之前那个逻辑，往地方去就完事了。
+            jvli = self.distance(target_pos,attacker_pos)  
+            if jvli > 0:
+                # 那就是还没到，那就继续移动
+                if self.abstract_state[attacker_ID]["flag_moving"] == False:
+                    # 那就是没动起来，那就得让它动起来。
+                    self._move_action(attacker_ID, target_pos)
+                    self.abstract_state[attacker_ID]["flag_moving"] = True
+                if (self.abstract_state[attacker_ID]["jvli"] == jvli) and (self.num>100):
+                    self.__finish_abstract_state(attacker_ID)
+                else:
+                    self.abstract_state[attacker_ID]["jvli"] = jvli
+            else:
+                # 那就是到了，那就要改抽象状态里面了。
+                self.__finish_abstract_state(attacker_ID)            
+            pass 
+
     def __handle_hidden_and_alert(self, attacker_ID):
         # 先来个基础版的，原地蹲下，不要取地形了。
-        # 0219: 这个可能有风险，它这里面开始状态转换之后似乎就走不了了
+        # 0219: 这个可能有风险，庙算里面开始状态转换之后似乎就走不了了
         self._hidden_actiion(attacker_ID)
         pass
 
@@ -705,6 +786,44 @@ class agent_guize(Agent):
             # finish jieju for one time, try to jieju further.
             pass
 
+    def __handle_open_fire(self, attacker_ID):
+        # 有啥能打的就都打一遍呗。这个还是共用CD的，不用考虑遍历。共用CD挺傻逼的讲道理。
+
+        # 如果在机动，就停下来。
+        flag_is_stop = self.is_stop(attacker_ID)
+        if not(flag_is_stop):
+            # 没有is stop就是在机动呗，那就停下来。
+            self._stop_action(attacker_ID)
+
+        # 这个写法相当于每一步都检测一次，能打就打
+        # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
+        self._fire_action(attacker_ID)
+
+    def __handle_UAV_move_on(self, attacker_ID, target_pos):
+        # 飞到目标点附近，站下来，如果完成了一次引导打击，就算是结束这个状态
+        # 开口就是老入侵者战机/金乌轰炸机了
+
+        # 如果已经打了一个引导打击了，那就退出去。不然就继续无人机出击。
+        if self.abstract_state[attacker_ID]["flag_attacked"]==True:
+            self.__finish_abstract_state(attacker_ID)
+
+        # 看距离，飞过去。
+        attacker_pos = self.get_pos(attacker_ID)
+        jvli = self.distance(target_pos,attacker_pos)  
+        if jvli > 2: # 飞到附近就行了，不用非要骑到脸上。
+            # 那就是还没到，那就继续移动
+            if self.abstract_state[attacker_ID]["flag_moving"] == False:
+                # 那就是没动起来，那就得让它动起来。
+                self._move_action(attacker_ID, target_pos)
+                self.abstract_state[attacker_ID]["flag_moving"] = True
+            self.abstract_state[attacker_ID]["jvli"] = jvli
+        else:
+            # 那就是到了，那就停下来准备打它
+            self._stop_action(attacker_ID) # 这个其实不是很必要，会自己停下来的。
+
+            # 然后引导打击
+            print("__handle_UAV_move_on: unfinished yet")
+
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
         # 统一写一个完了之后清空的，因为也不完全是清空，还得操作一些办法。
@@ -721,6 +840,7 @@ class agent_guize(Agent):
             next_abstract_state = {}
         self.abstract_state[attacker_ID] = next_abstract_state
         pass
+
 
     # guize_functions
     def F2A(self):
