@@ -317,6 +317,29 @@ class agent_guize(Agent):
             # print("_fire_action: no valid fire_action here, nothing happen")
             return self.act
     
+    def _guide_shoot_action(self, attacker_ID):
+        # 这个直接抄了，原则上UAV骑脸之后都会打到设想中的目标
+        """Generate guide shoot action with the highest attack level."""
+        candidate = self.status["judge_info"]
+        best = max(candidate, key=lambda x: x["attack_level"])
+        if best["attack_level"] >0:
+            # 说明确实是有东西可以给打
+            action_guide_shoot = {
+                "actor": self.seat,
+                "obj_id": attacker_ID,
+                "type": ActionType.GuideShoot,
+                "target_obj_id": best["target_obj_id"],
+                "weapon_id": best["weapon_id"],
+                "guided_obj_id": best["guided_obj_id"],
+            }
+            self._action_check_and_append(action_guide_shoot)
+            flag_done = True
+            return self.act,flag_done
+        else:
+            # 说明没东西可以打了，需要debug0308
+            flag_done = False
+            return self.act, flag_done
+
     def _selecte_compare_list(self, target_ID, target_ID_list):
         # give an obj(target_ID) and a list(target_ID_list), if the obj is in the list, then reture it and its index. 
         # if selected obj can not be reached, then randomly get one or find by prior list.
@@ -715,10 +738,12 @@ class agent_guize(Agent):
         attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID] = {"abstract_state": "jieju"}
 
-    def set_open_fire(self,attacker_ID):
+    def set_open_fire(self,attacker_ID,**kargs):
         # 对只能站定打的东西来说，这个状态就有意义了。
         attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID]={"abstract_state":"open_fire"}
+        if "next" in kargs:
+            self.abstract_state[attacker_ID]["next"] = kargs["next"]
         # 现在这版还没有集火的说法，就是单纯的能打谁就打谁。
         # 因为假设了这个庙算是一个“开火稀疏”的场景，所以能打就打应该是没问题的。
 
@@ -735,7 +760,7 @@ class agent_guize(Agent):
             # 防止无限嵌套，得检测一下是不是本来就已经在UAV_move_on了
             # 不然好像要写python写出内存泄漏了，乐.jpg
             abstract_state_previous = copy.deepcopy(self.abstract_state[attacker_ID])
-            self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,"flag_moving": False, "jvli": 114514, "flag_attacked":False}
+            self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,"flag_moving": False, "jvli": 114514, "flag_attacked":False, "stopped_time":0 }
             self.abstract_state[attacker_ID]["next"] = abstract_state_previous
         else:
             # 如果已经是UAV_move_on了，那就不用改了
@@ -861,7 +886,15 @@ class agent_guize(Agent):
         # 如果已经打了一个引导打击了，那就退出去。不然就继续无人机出击。
         if self.abstract_state[attacker_ID]["flag_attacked"]==True:
             self.__finish_abstract_state(attacker_ID)
-
+        # check一下停止的时长。
+        if (self.is_stop(attacker_ID)):
+            self.abstract_state[attacker_ID]["stopped_time"]=self.abstract_state[attacker_ID]["stopped_time"]+1
+        if self.abstract_state[attacker_ID]["stopped_time"]>200:
+            # 总的停止时长如果超过一个阈值，就不玩了，直接结束这个状态。
+            self.__finish_abstract_state(attacker_ID)
+            return
+        
+        # 前面那些check都过了，再来说函数实现的事情。
         # 看距离，飞过去。
         attacker_pos = self.get_pos(attacker_ID)
         jvli = self.distance(target_pos,attacker_pos)  
@@ -874,13 +907,38 @@ class agent_guize(Agent):
             self.abstract_state[attacker_ID]["jvli"] = jvli
         else:
             # 那就是到了，那就停下来准备打它
-            self._stop_action(attacker_ID) # 这个其实不是很必要，会自己停下来的。
-
-            # 然后引导打击
-            print("__handle_UAV_move_on: unfinished yet")
+            flag_is_stop = self.is_stop(attacker_ID)
+            if(flag_is_stop==False):
+                self._stop_action(attacker_ID) 
+                # 这个stop其实不是很必要，会自己停下来的。
+                
+                # 然后引导打击
+                # print("__handle_UAV_move_on: unfinished yet")
+                print("__handle_UAV_move_on: need debug 0308")
+                # 开始耦合了，按理来说应该多给几个车发出停下指令，准备好打，还要考虑车面临的威胁高不高，还要考虑车里有没有兵。
+                # 但是这里先写个最垃圾的，如果无人机就位了，就把所有车都停了。而且是开环控制。
+                IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+                for IFV_unit in IFV_units:
+                    # 按理来说直接这么写就完事了，虽然可能下一步才更新，但是反正得好几帧才能停下，不差这点了。
+                    next_IFV_abstract_state = copy.deepcopy(self.abstract_state[IFV_unit["obj_id"]])
+                    self.set_open_fire(IFV_unit, next=next_IFV_abstract_state)
+            else:
+                # 到这里原则上已经停好了，UAV和IFV都停好了
+                # 那就想想办法干它一炮
+                self.act, flag_done = self._guide_shoot_action(attacker_ID)
+                if flag_done==True:
+                    # 说明引导打击命令合法地发出去了，就认为是打出去了
+                    self.abstract_state[attacker_ID]["flag_attacked"] = True
+                    # 然后那几个IFV也不用挂着了，该干啥干啥去好了
+                    # 也是有隐患的，如果中间IFV的状态被改了而且next被清了，可能就要寄。
+                    IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+                    for IFV_unit in IFV_units:
+                        self.__finish_abstract_state(IFV_unit)
+                    
 
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
+        attacker_ID = self._set_compatible(attacker_ID) # 来个这个之后就可以直接进unit了
         # 统一写一个完了之后清空的，因为也不完全是清空，还得操作一些办法。
         # 暴力堆栈了其实是，笨是笨点但是有用。
         if attacker_ID in self.abstract_state:
