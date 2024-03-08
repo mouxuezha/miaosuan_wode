@@ -458,6 +458,9 @@ class agent_guize(Agent):
         self._action_check_and_append(action_jieju)
         return self.act,flag_done
     
+    def _on_board_action(self,attacker_ID,infantry_ID):
+        print("_on_board_action unfinished yet")
+
     def _action_check_and_append(self,action):
         # miaosuan platform did not accept void action {},
         # so there must be some check.
@@ -766,6 +769,18 @@ class agent_guize(Agent):
             # 如果已经是UAV_move_on了，那就不用改了
             pass
 
+    def set_on_board(self,attacker_ID, infantry_ID,**kargs):
+        # 这个就是开过去接到车上就算是完事了。
+        attacker_ID = self._set_compatible(attacker_ID)
+        infantry_ID = self._set_compatible(infantry_ID)
+
+        self.abstract_state[attacker_ID] = {"abstract_state": "on_board",
+                                                "infantry_ID": infantry_ID,
+                                                "flag_state": 1,
+                                                "num_wait": 0}
+        # 值得思考一下，这个是否应该支持next机制。要是都支持可能会搞得比较乱，需要更多调试，可能会比较帅
+        if "next" in kargs:
+            self.abstract_state[attacker_ID]["next"] = kargs["next"]
 
     def __handle_move_and_attack(self, attacker_ID, target_pos):
         # 这个是改进开火的。不带避障
@@ -934,8 +949,64 @@ class agent_guize(Agent):
                     IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
                     for IFV_unit in IFV_units:
                         self.__finish_abstract_state(IFV_unit)
-                    
 
+    def __handle_on_board(self,attacker_ID, infantry_ID, flag_state):
+        # 这个得细心点弄一下。
+        attacker_pos = self.__get_LLA(attacker_ID)
+        try:
+            infantry_pos = self.__get_LLA(infantry_ID)
+        except:
+            # 这个就是步兵不在态势里了。
+            infantry_pos = -1
+        
+        jvli = self.distance(attacker_pos,infantry_ID)  
+
+        if flag_state == 1:
+            # 没上车且距离远，那就得过去。
+            if jvli < 1:
+                # 那就是到了，转变为可以上车的状态。
+
+                # 上车命令。
+                self._on_board_action(attacker_ID,infantry_ID)
+                flag_state = 2
+                self.abstract_state[attacker_ID]["flag_state"] = flag_state
+            elif jvli < 3000:
+                # 距离不够，那就过去接。简化逻辑，只写一个过去接，不假设过程中会动或者什么的。
+                abstract_state_next = copy.deepcopy(self.abstract_state[attacker_ID])
+                self.set_move_and_attack(attacker_ID, infantry_pos)
+                self._stop_action(infantry_ID) # 步兵的动作给它停了，乖乖站好。TODO: 这里“乖乖站好”的实现，原则上也应该用abstract_state实现才比较优雅
+                self.abstract_state[attacker_ID]["next"] = abstract_state_next  # 然后把它放回去，准备跑完了之后再复原。
+            else:
+                # 那就是步兵已经寄了，那就直接退化成move and attack就完事儿了。
+                # self.set_move_and_attack(attacker_ID, target_LLA)
+                self.__finish_abstract_state(attacker_ID) # 一样的，退出状态，原则上next里面就会是move_and_attack
+        if flag_state == 2:
+            # 没上车且正在上,或者说条件姑且具备了。
+            if self.abstract_state[attacker_ID]["num_wait"] > 0:
+                # 那就是等着呢，那就等会儿好了。
+                self.abstract_state[attacker_ID]["num_wait"] = self.abstract_state[attacker_ID]["num_wait"] - 1
+                pass
+            else:
+                if jvli < 1:
+                    # 那就是到了，那就上车。
+                    self._stop_action(attacker_ID)
+                    # self._stop_action(infantry_ID)
+                    self.abstract_state[attacker_ID]["num_wait"] = 75
+                elif jvli <= 3000:
+                    # 那就是没到且可以去。
+                    flag_state = 1
+                    self.abstract_state[attacker_ID]["flag_state"] = flag_state
+                elif jvli > 3000:
+                    # 那就是对应的步兵已经没了，上车完成或者是真的没了。转换一下。
+                    flag_state = 3
+                    self.abstract_state[attacker_ID]["flag_state"] = flag_state
+            pass  
+        if flag_state == 3:
+            # 那这意思就是上车完事了，就结束退出。开冲放在别的地方开冲了。
+            # 开冲。 如果到了就放下来分散隐蔽，兵力分散火力集中。
+            # 不要再闭环到1了，这样防止这东西死循环。
+            self.__finish_abstract_state(attacker_ID)
+      
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
         attacker_ID = self._set_compatible(attacker_ID) # 来个这个之后就可以直接进unit了
