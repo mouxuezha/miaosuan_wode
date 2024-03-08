@@ -641,16 +641,30 @@ class agent_guize(Agent):
         for target_ID in list_deleted:
             del self.detected_state2[target_ID]
         return
+    
+    def _set_compatible(self,attacker_ID):
+        # 这个用于保证兼容性，让那些set的东西既可以接收attacker_ID，也可以接收unit作为参数
+        if (type(attacker_ID) == dict) and ("obj_id" in attacker_ID):
+            #说明输入进来的是unit
+            real_attacker_ID = attacker_ID["obj_id"]
+        elif type(attacker_ID) == int:
+            # 说明进来的是attacker_ID
+            real_attacker_ID = attacker_ID
+        else:
+            raise Exception("invalid attacker_ID")
+        return real_attacker_ID
 
     def set_move_and_attack(self, attacker_ID, target_pos):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
         if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
             # 说明是直接把status输入进来了。那就得循环。
             for attacker_ID_single in attacker_ID:
+                attacker_ID_single = self._set_compatible(attacker_ID_single)
                 self.abstract_state[attacker_ID_single] = {"abstract_state": "move_and_attack",
                 "target_pos": target_pos,
                 "flag_moving": False, "jvli": 114514}
         else:
+            attacker_ID = self._set_compatible(attacker_ID)
             self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,            "flag_moving": False, "jvli": 114514}
         pass
 
@@ -660,22 +674,27 @@ class agent_guize(Agent):
         if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
             # 说明是直接把status输入进来了。那就得循环。
             for attacker_ID_single in attacker_ID:
+                attacker_ID_single = self._set_compatible(attacker_ID_single)
                 self.abstract_state[attacker_ID_single] = {"abstract_state": "hidden_and_alert", "flag_shelter": False}
         else:
+            attacker_ID = self._set_compatible(attacker_ID)
             self.abstract_state[attacker_ID] = {"abstract_state": "hidden_and_alert", "flag_shelter": False}
         pass
 
     def set_none(self,attacker_ID):
         # yangjian xiefa, all set_none operations use this function, rather than modifing abstract_state directly.
+        attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID] = {"abstract_state": "none"}
         # pass 
     
     def set_jieju(self, attacker_ID):
         # just jieju if it is possible. 
+        attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID] = {"abstract_state": "jieju"}
 
     def set_open_fire(self,attacker_ID):
         # 对只能站定打的东西来说，这个状态就有意义了。
+        attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID]={"abstract_state":"open_fire"}
         # 现在这版还没有集火的说法，就是单纯的能打谁就打谁。
         # 因为假设了这个庙算是一个“开火稀疏”的场景，所以能打就打应该是没问题的。
@@ -685,11 +704,19 @@ class agent_guize(Agent):
         # 所以还得改个标志位，来体现是不是有东西能够提供引导打击。
 
         # 记录一下现有的 # 不对，逻辑上这个应该在set_UAV_move_on之前，别给他整乱了
-        # 不对就应该放这儿，UAV的逻辑应该是那种飞过去打一波走了的逻辑，应该自带状态转换。看起来就算是空状态也不影响这个状态转换的逻辑
-        abstract_state_previous = copy.deepcopy(self.abstract_state[attacker_ID])
-        self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,
-                                         "flag_moving": False, "jvli": 114514, "flag_attacked":False}
-        self.abstract_state[attacker_ID]["next"] = abstract_state_previous
+        # 不对，就应该放这儿，UAV的逻辑应该是那种飞过去打一波走了的逻辑，应该自带状态转换。看起来就算是空状态也不影响这个状态转换的逻辑
+        attacker_ID = self._set_compatible(attacker_ID)
+        
+        if self.abstract_state[attacker_ID]["abstract_state"]!="UAV_move_on":
+            # 防止无限嵌套，得检测一下是不是本来就已经在UAV_move_on了
+            # 不然好像要写python写出内存泄漏了，乐.jpg
+            abstract_state_previous = copy.deepcopy(self.abstract_state[attacker_ID])
+            self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,
+                                            "flag_moving": False, "jvli": 114514, "flag_attacked":False}
+            self.abstract_state[attacker_ID]["next"] = abstract_state_previous
+        else:
+            # 如果已经是UAV_move_on了，那就不用改了
+            pass
 
 
     def __handle_move_and_attack(self, attacker_ID, target_pos):
@@ -851,6 +878,20 @@ class agent_guize(Agent):
         print("group_A: unfinished yet")
         pass
 
+    def UAV_patrol(self):
+        # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
+
+        # 先把UAV取出来
+        UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
+        # 然后把目标取出来
+        if len(self.detected_state)>0:
+            target_unit = self.detected_state[0]
+            target_pos = target_unit["cur_hex"]
+        # 然后设定状态就开始过去了。
+        for UAV_unit in UAV_units:
+            self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos)
+        
+
     def get_target_cross_fire(self):
         # call one time for one game.
         observation = self.status
@@ -939,8 +980,8 @@ class agent_guize(Agent):
                     # then go. 
                     self.set_move_and_attack(attacker_ID, target_pos)
         elif self.num % 100:
-            # check if the path is safe. 
-            pass
             # deal with UAV.
+            self.UAV_patrol()
+            
 
 
