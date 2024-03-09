@@ -459,8 +459,28 @@ class agent_guize(Agent):
         return self.act,flag_done
     
     def _on_board_action(self,attacker_ID,infantry_ID):
-        print("_on_board_action unfinished yet")
-
+        # print("_on_board_action unfinished yet")
+        action_on_board = {
+                        "actor": self.seat,
+                        "obj_id": infantry_ID,
+                        "type": 3,
+                        "target_obj_id": attacker_ID
+                    }
+        # 这个只能决定有没有发出命令，发了之后会怎么样就不在这里闭环了。
+        self._action_check_and_append(action_on_board)
+        return self.act
+    
+    def _off_board_action(self, attacker_ID,infantry_ID):
+        action_off_board = {
+                            "actor": self.seat,
+                            "obj_id": attacker_ID,
+                            "type": 4,
+                            "target_obj_id": infantry_ID
+                        }
+        # 这个只能决定有没有发出命令，发了之后会怎么样就不在这里闭环了。
+        self._action_check_and_append(action_off_board)
+        return self.act
+    
     def _action_check_and_append(self,action):
         # miaosuan platform did not accept void action {},
         # so there must be some check.
@@ -469,7 +489,8 @@ class agent_guize(Agent):
         else:
             self.act.append(action)
         return self.act
-
+    
+    
     # abstract_state and related functinos
     def Gostep_abstract_state(self,**kargs):
         # 先更新一遍观测的东西，后面用到再说
@@ -507,27 +528,24 @@ class agent_guize(Agent):
                 self.set_jieju(my_ID) 
             else:
                 # 实际的处理
-                if my_abstract_state["abstract_state"] == "move_and_attack":
-                    # self.__handle_move_and_attack(my_ID, my_abstract_state["target_pos"])
+                my_abstract_state_type = my_abstract_state["abstract_state"]
+                if my_abstract_state_type == "move_and_attack":
                     self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
-                elif my_abstract_state["abstract_state"] == "hidden_and_alert":
+                elif my_abstract_state_type == "hidden_and_alert":
                     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
-                # elif my_abstract_state["abstract_state"] == "partrol_and_monitor":
-                #     self.__handle_partrol_and_monitor(my_ID, my_abstract_state["target_pos"])
-                elif my_abstract_state["abstract_state"] == "open_fire":
+                elif my_abstract_state_type == "open_fire":
                     self.__handle_open_fire(my_ID)
-                # elif my_abstract_state["abstract_state"] == "follow_and_defend":
-                #     self.__handle_follow_and_defend(my_ID, my_abstract_state["VIP_ID"],
-                #                                     my_abstract_state["flag_stand_by"])
-                elif my_abstract_state["abstract_state"] == "none":
+                elif my_abstract_state_type == "none":
                     self.__handle_none(my_ID)  # 这个就是纯纯的停止。
-                # elif my_abstract_state["abstract_state"] == "charge_and_xiache":
-                #     self.__handle_charge_and_xiache(my_ID, my_abstract_state["infantry_ID"],
-                #                                     my_abstract_state["target_pos"], my_abstract_state["flag_state"])
-                elif my_abstract_state["abstract_state"] == "jieju":
+                elif my_abstract_state_type == "jieju":
                     self.__handle_jieju(my_ID) # 解聚，解完了就会自动变成none的。
-                elif my_abstract_state["abstract_state"] == "UAV_move_on":
+                elif my_abstract_state_type == "UAV_move_on":
                     self.__handle_UAV_move_on(my_ID,target_pos=my_abstract_state["target_pos"])
+                elif my_abstract_state_type == "on_board":
+                    self.__handle_on_board(my_ID,my_abstract_state["infantry_ID"],my_abstract_state["flag_state"])
+                    # 这个参数选择其实不是很讲究，要不要在这里显式传my_abstract_state["flag_state"]，其实还是可以论的。
+                elif my_abstract_state_type == "off_board":
+                    self.__handle_off_board(my_ID,my_abstract_state["infantry_ID"],my_abstract_state["flag_state"])
         pass
 
     def __status_filter(self,status):
@@ -702,7 +720,18 @@ class agent_guize(Agent):
         else:
             raise Exception("invalid attacker_ID")
         return real_attacker_ID
-
+    
+    def _abstract_state_timeout_check(self,attacker_ID):
+        # 统一整一个，check一下保持这个状态是不是超过时间了。如果超过了就结束，别卡在里面。
+        # 不要滥用这个。
+        if not("remain_time") in self.abstract_state[attacker_ID]:
+            raise Exception("_abstract_state_timeout_check: invalid use, this abstract_state did not have remain_time")
+        self.abstract_state[attacker_ID]["remain_time"]=self.abstract_state[attacker_ID]["remain_time"]+1
+        if self.abstract_state[attacker_ID]["remain_time"]>300:
+            # 总的停止时长如果超过一个阈值，就不玩了，直接结束这个状态。
+            self.__finish_abstract_state(attacker_ID)
+            return
+        
     def set_move_and_attack(self, attacker_ID, target_pos):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
         if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
@@ -730,10 +759,12 @@ class agent_guize(Agent):
             self.abstract_state[attacker_ID] = {"abstract_state": "hidden_and_alert", "flag_shelter": False}
         pass
 
-    def set_none(self,attacker_ID):
+    def set_none(self,attacker_ID,**kargs):
         # yangjian xiefa, all set_none operations use this function, rather than modifing abstract_state directly.
         attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID] = {"abstract_state": "none"}
+        if "next" in kargs:
+            self.abstract_state[attacker_ID]["next"] = kargs["next"]
         # pass 
     
     def set_jieju(self, attacker_ID):
@@ -777,7 +808,18 @@ class agent_guize(Agent):
         self.abstract_state[attacker_ID] = {"abstract_state": "on_board",
                                                 "infantry_ID": infantry_ID,
                                                 "flag_state": 1,
-                                                "num_wait": 0}
+                                                "num_wait": 0,"remain_time":0}
+        # 值得思考一下，这个是否应该支持next机制。要是都支持可能会搞得比较乱，需要更多调试，可能会比较帅
+        if "next" in kargs:
+            self.abstract_state[attacker_ID]["next"] = kargs["next"]
+
+    def set_off_board(self,attacker_ID, infantry_ID,**kargs):
+        attacker_ID = self._set_compatible(attacker_ID)
+        infantry_ID = self._set_compatible(infantry_ID)        
+        self.abstract_state[attacker_ID] = {"abstract_state": "off_board",
+                                                "infantry_ID": infantry_ID,
+                                                "flag_state": 1,
+                                                "num_wait": 0, "remain_time":0}
         # 值得思考一下，这个是否应该支持next机制。要是都支持可能会搞得比较乱，需要更多调试，可能会比较帅
         if "next" in kargs:
             self.abstract_state[attacker_ID]["next"] = kargs["next"]
@@ -952,12 +994,17 @@ class agent_guize(Agent):
 
     def __handle_on_board(self,attacker_ID, infantry_ID, flag_state):
         # 这个得细心点弄一下。
-        attacker_pos = self.__get_LLA(attacker_ID)
+        attacker_pos = self.get_pos(attacker_ID)
         try:
-            infantry_pos = self.__get_LLA(infantry_ID)
+            infantry_pos = self.get_pos(infantry_ID)
         except:
             # 这个就是步兵不在态势里了。
             infantry_pos = -1
+        
+        # 接管步兵的控制权。在上车完成之前，步兵的抽象状态不再生效。
+        self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
+
+        self._abstract_state_timeout_check(attacker_ID)
         
         jvli = self.distance(attacker_pos,infantry_ID)  
 
@@ -990,6 +1037,7 @@ class agent_guize(Agent):
                 if jvli < 1:
                     # 那就是到了，那就上车。
                     self._stop_action(attacker_ID)
+                    self._on_board_action(attacker_ID,infantry_ID)
                     # self._stop_action(infantry_ID)
                     self.abstract_state[attacker_ID]["num_wait"] = 75
                 elif jvli <= 3000:
@@ -1006,7 +1054,44 @@ class agent_guize(Agent):
             # 开冲。 如果到了就放下来分散隐蔽，兵力分散火力集中。
             # 不要再闭环到1了，这样防止这东西死循环。
             self.__finish_abstract_state(attacker_ID)
-      
+            self.__finish_abstract_state(infantry_ID)
+
+    def __handle_off_board(self,attacker_ID, infantry_ID, flag_state):
+        # 这个之前是没有的。思路也是一样的，分状态分距离。# 而且这个需要好好整一下
+        unit_infantry = self.get_bop(infantry_ID)
+        unit_attacker = self.get_bop(attacker_ID)
+        # 一样的，接管步兵的控制权。
+        self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
+        # 然后启动超时check
+        self._abstract_state_timeout_check(attacker_ID)
+
+        if flag_state == 1:
+            # 具备条件了，但是还没有发下车命令。那就发个下车指令然后开始等着。
+            # 没停车就停车，停车了就发指令。
+            if self.is_stop(attacker_ID) == False:
+                self._stop_action(attacker_ID)
+                # 停车，一直check到标志位变了，到停稳
+            else:
+                # 那就是停下了，那就发命令下车。
+                self._off_board_action(attacker_ID,infantry_ID)
+                self.abstract_state[attacker_ID]["num_wait"] = 75
+                # 发出命令之后等着。
+                flag_state = 2
+                self.abstract_state[attacker_ID]["flag_state"] = flag_state            
+            pass
+        elif flag_state == 2:
+            # 发了下车命令了，正在等下车CD
+            self.abstract_state[attacker_ID]["num_wait"] = self.abstract_state[attacker_ID]["num_wait"] - 1
+            if self.abstract_state[attacker_ID]["num_wait"]==0:
+                # 说明下车下好了，转换状态
+                flag_state = 3
+                self.abstract_state[attacker_ID]["flag_state"] = flag_state       
+            pass
+        elif flag_state == 3:
+            # 下车下完了，就可以结束任务了。
+            self.__finish_abstract_state(attacker_ID)
+            self.__finish_abstract_state(infantry_ID) # 结束对步兵的控制
+
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
         attacker_ID = self._set_compatible(attacker_ID) # 来个这个之后就可以直接进unit了
@@ -1024,7 +1109,7 @@ class agent_guize(Agent):
             next_abstract_state = {}
         self.abstract_state[attacker_ID] = next_abstract_state
         pass
-
+        
 
     # guize_functions
     def F2A(self):
@@ -1051,7 +1136,11 @@ class agent_guize(Agent):
         else:
             # if nothing detected, then nothing happen.
             pass
-        
+
+    def IFV_transport_on(self):
+        # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
+        print("unfinished yet")
+        pass        
 
     def get_target_cross_fire(self):
         # call one time for one game.
