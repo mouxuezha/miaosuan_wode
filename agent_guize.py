@@ -6,7 +6,7 @@ sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
 from ai.agent import Agent, ActionType, BopType, MoveType
 from ai.base_agent import BaseAgent
 from ai.map import Map
-import copy
+import copy,random
 
 class agent_guize(Agent):
     def __init__(self):
@@ -223,6 +223,15 @@ class agent_guize(Agent):
                 # my operators
                 ID_list.append(operator["obj_id"])
         return ID_list
+
+    def get_pos_average(self,units):
+        geshu = len(units)
+        pos_ave = 0 
+        for i in range(geshu):
+            pos_ave = (pos_ave/(i+0.000001) + self.get_pos(units[i]["obj_id"])) / (i+1)
+        
+        pos_ave = round(pos_ave)
+        return pos_ave
 
     def distance(self, target_pos, attacker_pos):
         jvli = self.map.get_distance(target_pos, attacker_pos)
@@ -946,7 +955,7 @@ class agent_guize(Agent):
         # check一下停止的时长。
         if (self.is_stop(attacker_ID)):
             self.abstract_state[attacker_ID]["stopped_time"]=self.abstract_state[attacker_ID]["stopped_time"]+1
-        if self.abstract_state[attacker_ID]["stopped_time"]>200:
+        if self.abstract_state[attacker_ID]["stopped_time"]>100:
             # 总的停止时长如果超过一个阈值，就不玩了，直接结束这个状态。
             self.__finish_abstract_state(attacker_ID)
             return
@@ -1123,24 +1132,69 @@ class agent_guize(Agent):
     def UAV_patrol(self):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
 
+        # 不要重复下命令，不然就把时间都刷没了
+
         # 先把UAV取出来
         UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
         # 然后把目标取出来
         if len(self.detected_state)>0:
             target_unit = self.detected_state[0]
             target_pos = target_unit["cur_hex"]
-            
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
-                self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos)
+                if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
+                    self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos)
         else:
             # if nothing detected, then nothing happen.
+            # no, if nothing detected, then random patrol target
+            pos_ave =self.get_pos_average(self.status["operators"]) 
+            target_pos_random = pos_ave + 10**(random.randint(0,1)*2) * random.randint(10,20)
+            # 然后设定状态就开始过去了。
+            for UAV_unit in UAV_units:
+                if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
+                    self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)            
             pass
 
-    def IFV_transport_on(self):
+    def IFV_transport(self,model="on"):
         # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
-        print("unfinished yet")
-        pass        
+        # on 就是上车，off就是下车。
+        # print("unfinished yet")
+        # 先把步兵和步兵车选出来。
+        # IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+        # infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
+        # 有一个遗留问题，如果不是同时被打烂，那就会不匹配，所以就要好好搞搞。
+        if self.num < 4:
+            IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+            infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2) 
+            self.IFV_units = copy.deepcopy(IFV_units)
+            self.infantry_units = copy.deepcopy(infantry_units)
+        else:
+            IFV_units = self.IFV_units
+            infantry_units = self.infantry_units
+
+        geshu=min(len(IFV_units), len(infantry_units))
+        # 然后循环发命令。
+        # 这个命令不重复发，发过了就不发了.
+        for i in range(geshu):
+            IFV_unit = IFV_units[i]
+            if (self.abstract_state[IFV_unit["obj_id"]]["abstract_state"]!="on_board") and (model == "on"):
+                self.set_on_board(IFV_unit,infantry_units[i])
+            elif (self.abstract_state[IFV_unit["obj_id"]]["abstract_state"]!="off_board") and (model == "off"):
+                self.set_off_board(IFV_unit,infantry_units[i])
+
+    def IFV_transport_check(self):
+        # 检测步兵是不是在车上。
+        flag_on = True
+        flag_off = True
+        infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
+
+        for infantry_unit in infantry_units:
+            if infantry_unit["on_board"] == True:
+                flag_on = flag_on and True
+            if infantry_unit["on_board"] == False:
+                flag_off = flag_off and True
+        
+        return flag_on, flag_off 
 
     def get_target_cross_fire(self):
         # call one time for one game.
@@ -1148,10 +1202,6 @@ class agent_guize(Agent):
         communications = observation["communication"]
         flag_done = False
         for command in communications:
-        #     if command["type"] in [210] and command["info"]["company_id"] == self.seat:
-        #         self.my_direction = command
-        #         self.target_pos = self.my_direction["info"]["target_pos"]
-        #         flag_done = True
             if command["type"] in [210] :
                 self.my_direction = command
                 self.target_pos = self.my_direction["hex"]
@@ -1221,18 +1271,55 @@ class agent_guize(Agent):
         else:
             target_pos = self.target_pos
         
+        units=self.status["operator"]           
+        IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+        infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2) 
+        
         if self.num<200:
-            # 解聚解到彻底没有婕德。
-            # then move to there.
-            ID_list = self.get_ID_list(self.status)
-            for attacker_ID in ID_list:
-                if len(self._check_actions(attacker_ID, model="jieju"))>0:
-                    # then jieju
-                    self.set_jieju(attacker_ID)
-                else:
-                    # then go. 
-                    self.set_move_and_attack(attacker_ID, target_pos)
-        elif self.num % 100==0:
+            # 改进一下解聚的，分类.
+            for unit in units:
+                attacker_ID = unit["obj_id"]
+                if (unit["sub_type"] != 1) and (unit["sub_type"] != 2) :
+                    # 先把除了步兵以外的都解聚了
+                    if len(self._check_actions(attacker_ID, model="jieju"))>0:
+                        # then jieju
+                        self.set_jieju(attacker_ID)
+                    else:
+                        # then go. 
+                        self.set_move_and_attack(attacker_ID, target_pos)
+            pass
+        
+        flag_on,flag_off = self.IFV_transport_check()
+        if self.num<500:
+            # 处理车子和步兵。先上车，上了车再解聚，再说
+            if flag_on == False:
+                # 没上完车就继续上。
+                self.IFV_transport(model="on")
+            elif flag_on == True:
+                #上完车就解聚：
+                for unit in IFV_units:
+                    if len(self._check_actions(attacker_ID, model="jieju"))>0:
+                        # then jieju
+                        self.set_jieju(attacker_ID)
+                    else:
+                        # then go. 
+                        self.set_move_and_attack(attacker_ID, target_pos) 
+                        # 抽象状态原则上应该能够起到隔离重复命令的作用，这也是分层的好处之一。
+        else:
+            # 如果快开到了，就下车然后A过去。
+            for unit in IFV_units:
+                IFV_pos =self.get_pos(unit["obj_id"])
+                jvli = self.distance(target_pos,IFV_pos)  
+                if (jvli < 5) and (flag_off==False):
+                    # 那就视为快到了，那就下车了。
+                    self.IFV_transport(model="off")
+                if flag_off==True:
+                    # 那就认为是下完了，适当的闭环控制。下完了就A过去
+                    for unit in (IFV_units + infantry_units):
+                        self.set_move_and_attack(unit["obj_id"], target_pos) 
+
+                
+        if (self.num % 100==0) and (self.num>500):
             # deal with UAV.
             self.UAV_patrol()
             
