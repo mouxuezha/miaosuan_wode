@@ -945,6 +945,12 @@ class agent_guize(Agent):
             self.set_none(attacker_ID)
         else:
             # finish jieju for one time, try to jieju further.
+            # move to random location.
+            pos_attacker = self.get_pos(attacker_ID)
+            distance_start = 1
+            distance_end = 2 
+            candidate_pos_list = self.map.get_grid_distance(pos_attacker, distance_start, distance_end)
+            index_random 
             pass
 
     def __handle_open_fire(self, attacker_ID):
