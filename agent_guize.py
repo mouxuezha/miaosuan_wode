@@ -195,7 +195,7 @@ class agent_guize(Agent):
         elif unit_type == 8: # transport helicopter 
             prior_list = [] # unused yet 
         else:
-            raise Exception("XXH: invalid unit_type in get_prior_list, G. ")
+            raise Exception("get_prior_list: invalid unit_type in get_prior_list, G. ")
             prior_list = [0, 1, 4, -1]
             pass 
 
@@ -761,19 +761,26 @@ class agent_guize(Agent):
         else:
             return False
         
-    def set_move_and_attack(self, attacker_ID, target_pos):
+    def set_move_and_attack(self, attacker_ID, target_pos,model="normal"):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
-        if (type(attacker_ID) == dict) or (type(attacker_ID) == list):
-            # 说明是直接把status输入进来了。那就得循环。
-            for attacker_ID_single in attacker_ID:
-                attacker_ID_single = self._set_compatible(attacker_ID_single)
-                self.abstract_state[attacker_ID_single] = {"abstract_state": "move_and_attack",
-                "target_pos": target_pos,
-                "flag_moving": False, "jvli": 114514}
-        else:
-            attacker_ID = self._set_compatible(attacker_ID)
-            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,            "flag_moving": False, "jvli": 114514}
-        pass
+        # 直接做成模式可选择的就好了，要覆盖就覆盖，不要的话可以不覆盖。
+        attacker_ID = self._set_compatible(attacker_ID)
+        if model=="normal":
+            # 默认模式不覆盖，检测如果已经是move_and_attack状态了，就不做操作，
+            # 如果是别的，就还是覆盖了。
+            try:
+                this_abstract_state= self.abstract_state[attacker_ID]["abstract_state"]
+                if (this_abstract_state == "move_and_attack") or (this_abstract_state=="jieju") or (this_abstract_state=="on_board") or (this_abstract_state=="off_board"):
+                    pass
+                else:
+                    self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514}
+            except:
+                # 上面要是没try到，就说明抽象状态里面还没有这个ID，那就先设定一下也没啥不好的。
+                self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514}
+        elif model == "force":
+            # 这个就是不管一切的强势覆盖，如果连着发就会覆盖
+            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514}
+
 
     def set_hidden_and_alert(self, attacker_ID):
         # 这个就是原地坐下，调成隐蔽状态。
@@ -940,18 +947,31 @@ class agent_guize(Agent):
     def __handle_jieju(self, attacker_ID):
         # if it can be jieju, then jieju, or change the abstract_state.
         self.act,flag_done = self._jieju_action(attacker_ID)
-        if flag_done==False:
-            # can not jieju anymore, change to none.
-            self.set_none(attacker_ID)
-        else:
-            # finish jieju for one time, try to jieju further.
-            # move to random location.
+        unit = self.get_bop(attacker_ID)
+        if len(self._check_actions(attacker_ID, model="jieju"))==0 and unit["forking"]==0:
+            # 进了这里才是没有正在解聚且不能再解聚了。_jieju_action的flag_done主要是有没有发出过命令。
             pos_attacker = self.get_pos(attacker_ID)
             distance_start = 1
             distance_end = 2 
             candidate_pos_list = self.map.get_grid_distance(pos_attacker, distance_start, distance_end)
-            index_random 
+            geshu = len(candidate_pos_list)
+            index_random = random.randint(0,geshu)
+            target_pos_random = candidate_pos_list[index_random]
+            
+            # # 然后移动过去。不要move and attack了，直接移过去。
+            # self._move_action(attacker_ID,target_pos_random)
+            self.set_move_and_attack(attacker_ID,target_pos_random)
+        else:
+            # 那就是还能接着解聚。
             pass
+        # if flag_done==False:
+        #     # can not jieju anymore, change to none.
+        #     self.set_none(attacker_ID)
+        # else:
+        #     # finish jieju for one time, try to jieju further.
+        #     # move to random location.
+        #     pass
+        return 
 
     def __handle_open_fire(self, attacker_ID):
         # 有啥能打的就都打一遍呗。这个还是共用CD的，不用考虑遍历。共用CD挺傻逼的讲道理。
@@ -1150,11 +1170,21 @@ class agent_guize(Agent):
         
 
     # guize_functions
-    def F2A(self):
-        print("F2A: unfinished yet")
+    def F2A(self,target_pos):
+        units = self.status["operators"]
+        for unit in units:
+            self.set_move_and_attack(unit,target_pos)
+            # A了A了，都这时候了还要个毛的脑子，直接头铁
         pass
 
-    def group_A(self):
+    def group_A(self, units,target_pos):
+        # 这里需要一个新的结阵逻辑。
+
+        # 还是先弄出一个类似向量的东西确定方位，
+        # 然后确定阵形中能用的一系列位置、
+        # 然后再进行一波分配。
+        for unit in units:
+            self.set_move_and_attack(unit,target_pos)
         print("group_A: unfinished yet")
         pass
 
@@ -1351,39 +1381,48 @@ class agent_guize(Agent):
                 else:
                     # then go. 
                     if (unit["sub_type"] != 1) and (unit["sub_type"] != 2) :
-                        self.set_move_and_attack(attacker_ID, target_pos)
+                        # 别跑散了，先整理下队形是比较好的，然后尽量同时出发。
+                        # self.set_move_and_attack(attacker_ID, target_pos)
+                        pass
                     # else:
                     #     self.set_none(attacker_ID)
             pass
         
         flag_on,flag_off = self.IFV_transport_check()
-        if (self.num<500) and (self.jieju_check(model="IFV")):
+        jieju_flag = self.jieju_check(model="IFV")
+        if (self.num<500) and (jieju_flag):
             # 处理车子和步兵。get on board after jieju finished
             if flag_on == False:
                 # 没上完车就继续上。
                 self.IFV_transport(model="on")
             elif flag_on == True:
                 # then go. 
-                self.set_move_and_attack(attacker_ID, target_pos) 
+                # self.set_move_and_attack(attacker_ID, target_pos) 
+                print("on_board ready")
                 # 抽象状态原则上应该能够起到隔离重复命令的作用，这也是分层的好处之一。
-                        
-        elif self.jieju_check(model="IFV"):
-            # 如果快开到了，就下车然后A过去。
-            for unit in IFV_units:
-                IFV_pos =self.get_pos(unit["obj_id"])
-                jvli = self.distance(target_pos,IFV_pos)  
-                if (jvli < 5) and (flag_off==False):
-                    # 那就视为快到了，那就下车了。
-                    self.IFV_transport(model="off")
-                if flag_off==True:
-                    # 那就认为是下完了，适当的闭环控制。下完了就A过去
-                    for unit in (IFV_units + infantry_units):
-                        self.set_move_and_attack(unit["obj_id"], target_pos) 
 
+        if (flag_on==True and self.jieju_check(model="all")) or (self.num > 1000 ):
+            # 这个就算是解聚完事儿、上车完事儿，然后准备冲了。
+            # 或者是帧数太多顶不住了
+            for unit in units:
+                self.set_move_and_attack(unit)
+
+        if jieju_flag and self.num>1500:
+            # 如果快开到了，就下车然后A过去。
+            IFV_pos =self.get_pos_average(IFV_units)
+            jvli = self.distance(target_pos,IFV_pos)  
+            if (jvli < 5) and (flag_off==False):
+                # 那就视为快到了，那就下车了。
+                self.IFV_transport(model="off")
+            if (jvli<5) and (flag_off==True):
+                # 那就认为是下车下完了，那就A过去了
+                self.group_A(IFV_units + infantry_units, target_pos)
                 
         if (self.num % 100==0) and (self.num>50):
             # deal with UAV.
             self.UAV_patrol()
-            
+        elif self.num>2400: # 这个时间还得标定一下最好是用距离除一除之类的。
+            # 最后收拢一下。
+            self.F2A(target_pos)
 
 
