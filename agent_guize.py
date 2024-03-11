@@ -237,7 +237,18 @@ class agent_guize(Agent):
         jvli = self.map.get_distance(target_pos, attacker_pos)
         # print("distance: unfinished yet")
         return jvli
-
+    
+    def get_IFV_units(self):
+        # double select by type.
+        IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+        IFV_units = self.select_by_type(IFV_units,key="color",value=0)
+        return IFV_units
+    
+    def get_infantry_units(self):
+        # same
+        infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
+        infantry_units = self.select_by_type(infantry_units,key="color",value=0)
+        return infantry_units        
     # basic AI interface.
     def _move_action(self,attacker_ID, target_pos):
         bop = self.get_bop(attacker_ID)
@@ -330,6 +341,12 @@ class agent_guize(Agent):
         # 这个直接抄了，原则上UAV骑脸之后都会打到设想中的目标
         """Generate guide shoot action with the highest attack level."""
         candidate = self.status["judge_info"]
+        if len(candidate) == 0:
+            # which means that target has been destroyed.
+            # return to avoid key value error
+            flag_done = True
+            return self.act, flag_done
+        
         best = max(candidate, key=lambda x: x["attack_level"])
         if best["attack_level"] >0:
             # 说明确实是有东西可以给打
@@ -345,7 +362,7 @@ class agent_guize(Agent):
             flag_done = True
             return self.act,flag_done
         else:
-            # 说明没东西可以打了，需要debug0308
+            # 说明没东西可以打了
             flag_done = False
             return self.act, flag_done
 
@@ -558,7 +575,7 @@ class agent_guize(Agent):
         pass
 
     def __status_filter(self,status):
-        print("__status_filter: unfinished yet.")
+        # print("__status_filter: unfinished yet.")
         return status
     
     def update_threaten_source(self):
@@ -665,7 +682,7 @@ class agent_guize(Agent):
             a2 = 1 
             if threaten_source["type"] == 0:
                 # 有敌方单位，就别去送了。
-                field_value = field_value + a1 / (a2 + jvli) # never touch the enemy. 
+                field_value = field_value + a1*3 / (a2 + jvli) # never touch the enemy. 
             elif threaten_source["type"] == 1:
                 # 有炮火覆盖的地方，如果快开始爆炸了就别过去送了，绕一下。
                 if threaten_source["delay"] == 0:
@@ -738,8 +755,11 @@ class agent_guize(Agent):
         self.abstract_state[attacker_ID]["remain_time"]=self.abstract_state[attacker_ID]["remain_time"]+1
         if self.abstract_state[attacker_ID]["remain_time"]>300:
             # 总的停止时长如果超过一个阈值，就不玩了，直接结束这个状态。
-            self.__finish_abstract_state(attacker_ID)
-            return
+            # self.__finish_abstract_state(attacker_ID)
+            # return
+            return True
+        else:
+            return False
         
     def set_move_and_attack(self, attacker_ID, target_pos):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
@@ -884,7 +904,7 @@ class agent_guize(Agent):
                 neighbor_field_single = self.threaten_field[neighbor_pos_single]
             neighbor_field_list.append(neighbor_field_single)
         # 于是再检测阈值，看有没有超过的，如果有就躲一下，没有就继续往目标去。
-        if max(neighbor_field_list)>10:
+        if max(neighbor_field_list)>5:
             # 说明附近威胁有点大，触发规避动作
             # 触发规避，就找威胁最小的那个格子然后过去。
             neighbor_field_min = min(neighbor_field_list)
@@ -897,16 +917,11 @@ class agent_guize(Agent):
             jvli = self.distance(target_pos,attacker_pos)  
             if jvli > 0:
                 # 那就是还没到，那就继续移动
-                if self.abstract_state[attacker_ID]["flag_moving"] == False:
-                    # 那就是没动起来，那就得让它动起来。
-                    self._move_action(attacker_ID, target_pos)
-                    self.abstract_state[attacker_ID]["flag_moving"] = True
-                if (self.abstract_state[attacker_ID]["jvli"] == jvli) and (self.num>100):
-                    pass 
-                    # self.__finish_abstract_state(attacker_ID)
-                else:
-                    self.abstract_state[attacker_ID]["jvli"] = jvli
-                    # self.abstract_state[attacker_ID]["jvli"] = jvli
+                self._move_action(attacker_ID, target_pos)
+                unit = self.get_bop(attacker_ID)
+                self.abstract_state[attacker_ID]["flag_moving"] = not(unit["stop"])
+
+                self.abstract_state[attacker_ID]["jvli"] = jvli
             else:
                 # 那就是到了，那就要改抽象状态里面了。
                 self.__finish_abstract_state(attacker_ID)            
@@ -952,6 +967,8 @@ class agent_guize(Agent):
         # 如果已经打了一个引导打击了，那就退出去。不然就继续无人机出击。
         if self.abstract_state[attacker_ID]["flag_attacked"]==True:
             self.__finish_abstract_state(attacker_ID)
+            return 
+
         # check一下停止的时长。
         if (self.is_stop(attacker_ID)):
             self.abstract_state[attacker_ID]["stopped_time"]=self.abstract_state[attacker_ID]["stopped_time"]+1
@@ -979,11 +996,9 @@ class agent_guize(Agent):
                 # 这个stop其实不是很必要，会自己停下来的。
                 
                 # 然后引导打击
-                # print("__handle_UAV_move_on: unfinished yet")
-                print("__handle_UAV_move_on: need debug 0308")
                 # 开始耦合了，按理来说应该多给几个车发出停下指令，准备好打，还要考虑车面临的威胁高不高，还要考虑车里有没有兵。
                 # 但是这里先写个最垃圾的，如果无人机就位了，就把所有车都停了。而且是开环控制。
-                IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+                IFV_units = self.get_IFV_units()
                 for IFV_unit in IFV_units:
                     # 按理来说直接这么写就完事了，虽然可能下一步才更新，但是反正得好几帧才能停下，不差这点了。
                     next_IFV_abstract_state = copy.deepcopy(self.abstract_state[IFV_unit["obj_id"]])
@@ -997,7 +1012,7 @@ class agent_guize(Agent):
                     self.abstract_state[attacker_ID]["flag_attacked"] = True
                     # 然后那几个IFV也不用挂着了，该干啥干啥去好了
                     # 也是有隐患的，如果中间IFV的状态被改了而且next被清了，可能就要寄。
-                    IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+                    IFV_units = self.get_IFV_units()
                     for IFV_unit in IFV_units:
                         self.__finish_abstract_state(IFV_unit)
 
@@ -1013,9 +1028,13 @@ class agent_guize(Agent):
         # 接管步兵的控制权。在上车完成之前，步兵的抽象状态不再生效。
         self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
 
-        self._abstract_state_timeout_check(attacker_ID)
+        flag_time_out = self._abstract_state_timeout_check(attacker_ID)
+        if flag_time_out:
+            self.__finish_abstract_state(attacker_ID)
+            self.__finish_abstract_state(infantry_ID)
+            return
         
-        jvli = self.distance(attacker_pos,infantry_ID)  
+        jvli = self.distance(attacker_pos,infantry_pos)  
 
         if flag_state == 1:
             # 没上车且距离远，那就得过去。
@@ -1072,7 +1091,11 @@ class agent_guize(Agent):
         # 一样的，接管步兵的控制权。
         self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
         # 然后启动超时check
-        self._abstract_state_timeout_check(attacker_ID)
+        flag_time_out = self._abstract_state_timeout_check(attacker_ID)
+        if flag_time_out:
+            self.__finish_abstract_state(attacker_ID)
+            self.__finish_abstract_state(infantry_ID)
+            return
 
         if flag_state == 1:
             # 具备条件了，但是还没有发下车命令。那就发个下车指令然后开始等着。
@@ -1163,9 +1186,9 @@ class agent_guize(Agent):
         # IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
         # infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
         # 有一个遗留问题，如果不是同时被打烂，那就会不匹配，所以就要好好搞搞。
-        if self.num < 4:
-            IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
-            infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2) 
+        if self.num < 180:
+            IFV_units = self.get_IFV_units()
+            infantry_units = self.get_infantry_units()
             self.IFV_units = copy.deepcopy(IFV_units)
             self.infantry_units = copy.deepcopy(infantry_units)
         else:
@@ -1177,9 +1200,20 @@ class agent_guize(Agent):
         # 这个命令不重复发，发过了就不发了.
         for i in range(geshu):
             IFV_unit = IFV_units[i]
-            if (self.abstract_state[IFV_unit["obj_id"]]["abstract_state"]!="on_board") and (model == "on"):
+            IFV_abstract_state = self.abstract_state[IFV_unit["obj_id"]]
+
+            # check if the on board or off board abstract state setted. attension, when the unit is moving.
+            flag_ordered = False
+            if (IFV_abstract_state["abstract_state"]=="on_board") or (IFV_abstract_state["abstract_state"]=="off_board") :
+                flag_ordered = True
+            elif IFV_abstract_state["abstract_state"]=="move_and_attack":
+                if "next" in IFV_abstract_state:
+                    flag_ordered = (IFV_abstract_state["next"]["abstract_state"]=="on_board") or (IFV_abstract_state["next"]["abstract_state"]=="off_board")
+
+
+            if (not flag_ordered) and (model == "on"):
                 self.set_on_board(IFV_unit,infantry_units[i])
-            elif (self.abstract_state[IFV_unit["obj_id"]]["abstract_state"]!="off_board") and (model == "off"):
+            elif (not flag_ordered) and (model == "off"):
                 self.set_off_board(IFV_unit,infantry_units[i])
 
     def IFV_transport_check(self):
@@ -1191,10 +1225,34 @@ class agent_guize(Agent):
         for infantry_unit in infantry_units:
             if infantry_unit["on_board"] == True:
                 flag_on = flag_on and True
+            else:
+                flag_on = flag_on and False
+    
             if infantry_unit["on_board"] == False:
                 flag_off = flag_off and True
+            else:
+                flag_off = flag_off and False
         
         return flag_on, flag_off 
+    
+    def jieju_check(self,model="all"):
+        # check if the jieju finished.
+        if model == "IFV":
+            units = self.get_IFV_units() + self.get_infantry_units()
+        elif model == "all":
+            units = self.status["operators"]
+        elif model == "others":
+            pass
+        
+        flag_finished = True 
+        for unit in units:
+            if len(self._check_actions(unit["obj_id"], model="jieju"))==0 and unit["forking"]==0:
+                # not forking, can not fork, so the forking process finished.
+                flag_finished = flag_finished and True
+            else:
+                flag_finished = flag_finished and False
+        
+        return flag_finished
 
     def get_target_cross_fire(self):
         # call one time for one game.
@@ -1236,12 +1294,14 @@ class agent_guize(Agent):
         units = observation["operators"]
         detected_state = self.get_detected_state(observation)
         
+        # update the actions
+        self.Gostep_abstract_state()
         # the real tactics in step*() function.
         # self.step0()
         self.step_cross_fire()
 
-        # update the actions
-        self.Gostep_abstract_state()
+        # # update the actions
+        # self.Gostep_abstract_state()
 
         return self.act
 
@@ -1271,41 +1331,37 @@ class agent_guize(Agent):
         else:
             target_pos = self.target_pos
         
-        units=self.status["operator"]           
-        IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
-        infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2) 
+        units=self.status["operators"]           
+        IFV_units = self.get_IFV_units()
+        infantry_units = self.get_infantry_units()
         
         if self.num<200:
             # 改进一下解聚的，分类.
             for unit in units:
                 attacker_ID = unit["obj_id"]
-                if (unit["sub_type"] != 1) and (unit["sub_type"] != 2) :
-                    # 先把除了步兵以外的都解聚了
-                    if len(self._check_actions(attacker_ID, model="jieju"))>0:
-                        # then jieju
-                        self.set_jieju(attacker_ID)
-                    else:
-                        # then go. 
+                if len(self._check_actions(attacker_ID, model="jieju"))>0:
+                    # then jieju
+                    self.set_jieju(attacker_ID)
+                else:
+                    # then go. 
+                    if (unit["sub_type"] != 1) and (unit["sub_type"] != 2) :
                         self.set_move_and_attack(attacker_ID, target_pos)
+                    # else:
+                    #     self.set_none(attacker_ID)
             pass
         
         flag_on,flag_off = self.IFV_transport_check()
-        if self.num<500:
-            # 处理车子和步兵。先上车，上了车再解聚，再说
+        if (self.num<500) and (self.jieju_check(model="IFV")):
+            # 处理车子和步兵。get on board after jieju finished
             if flag_on == False:
                 # 没上完车就继续上。
                 self.IFV_transport(model="on")
             elif flag_on == True:
-                #上完车就解聚：
-                for unit in IFV_units:
-                    if len(self._check_actions(attacker_ID, model="jieju"))>0:
-                        # then jieju
-                        self.set_jieju(attacker_ID)
-                    else:
-                        # then go. 
-                        self.set_move_and_attack(attacker_ID, target_pos) 
-                        # 抽象状态原则上应该能够起到隔离重复命令的作用，这也是分层的好处之一。
-        else:
+                # then go. 
+                self.set_move_and_attack(attacker_ID, target_pos) 
+                # 抽象状态原则上应该能够起到隔离重复命令的作用，这也是分层的好处之一。
+                        
+        elif self.jieju_check(model="IFV"):
             # 如果快开到了，就下车然后A过去。
             for unit in IFV_units:
                 IFV_pos =self.get_pos(unit["obj_id"])
@@ -1319,7 +1375,7 @@ class agent_guize(Agent):
                         self.set_move_and_attack(unit["obj_id"], target_pos) 
 
                 
-        if (self.num % 100==0) and (self.num>500):
+        if (self.num % 100==0) and (self.num>50):
             # deal with UAV.
             self.UAV_patrol()
             
