@@ -8,7 +8,7 @@ from ai.base_agent import BaseAgent
 from ai.map import Map
 import copy,random
 
-class agent_guize(Agent):
+class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
     def __init__(self):
         self.scenario = None
         self.color = None
@@ -275,7 +275,13 @@ class agent_guize(Agent):
         # same
         infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
         infantry_units = self.select_by_type(infantry_units,key="color",value=0)
-        return infantry_units        
+        return infantry_units       
+
+    def get_UAV_units(self):
+        UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
+        UAV_units = self.select_by_type(UAV_units,key="color",value=0)
+        return UAV_units
+    
     # basic AI interface.
     def _move_action(self,attacker_ID, target_pos):
         bop = self.get_bop(attacker_ID)
@@ -1290,7 +1296,7 @@ class agent_guize(Agent):
                 self.set_off_board(IFV_unit,infantry_units[i])
 
     def IFV_transport_check(self):
-        # 检测步兵是不是在车上。
+        # 检测步兵是不是全部在车上或者不在车上。
         flag_on = True
         flag_off = True
         infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
@@ -1308,13 +1314,14 @@ class agent_guize(Agent):
         
         return flag_on, flag_off 
     
-    def jieju_check(self,model="all"):
+    def jieju_check(self,model="all",**kargs):
         # check if the jieju finished.
         if model == "IFV":
             units = self.get_IFV_units() + self.get_infantry_units()
         elif model == "all":
             units = self.status["operators"]
-        elif model == "others":
+        elif model == "part":
+            units = kargs["units"]
             pass
         
         flag_finished = True 
@@ -1407,48 +1414,39 @@ class agent_guize(Agent):
         units=self.status["operators"]           
         IFV_units = self.get_IFV_units()
         infantry_units = self.get_infantry_units()
-        
-        self.IFV_transport(model="on")
-        return 
+        UAV_units = self.get_UAV_units()
+        # 这个是获取别的units用来准备一开始就解聚
+        others_units = list(set(units) - set(IFV_units) - set(infantry_units) - set(UAV_units))
 
-        if self.num<200:
-            # 改进一下解聚的，分类.
-            for unit in units:
-                attacker_ID = unit["obj_id"]
-                if len(self._check_actions(attacker_ID, model="jieju"))>0:
-                    # then jieju
-                    self.set_jieju(attacker_ID)
-                else:
-                    # then go. 
-                    if (unit["sub_type"] != 1) and (unit["sub_type"] != 2) :
-                        # 别跑散了，先整理下队形是比较好的，然后尽量同时出发。
-                        # self.set_move_and_attack(attacker_ID, target_pos)
-                        pass
-                    # else:
-                    #     self.set_none(attacker_ID)
-            pass
-        
         flag_on,flag_off = self.IFV_transport_check()
-        jieju_flag = self.jieju_check(model="IFV")
-        flag_stop_infantry = self.is_stop(infantry_units)
-        if (self.num<500) and (jieju_flag) and flag_stop_infantry:
-            # 处理车子和步兵。get on board after jieju finished
-            if flag_on == False:
-                # 没上完车就继续上。
-                self.IFV_transport(model="on")
-            elif flag_on == True:
-                # then go. 
-                # self.set_move_and_attack(attacker_ID, target_pos) 
-                print("on_board ready")
-                # 抽象状态原则上应该能够起到隔离重复命令的作用，这也是分层的好处之一。
 
-        if (flag_on==True and self.jieju_check(model="all")) or (self.num > 1000 ):
-            # 这个就算是解聚完事儿、上车完事儿，然后准备冲了。
-            # 或者是帧数太多顶不住了
-            for unit in units:
-                self.set_move_and_attack(unit,target_pos)
+        if self.num<500 and flag_on==False:
+            # 如果刚开始且没上车，那就先上车
+            self.IFV_transport(model="on")
+        elif self.num<600:
+            self.IFV_transport(model="off") # this is for test
+            for unit in IFV_units:
+                self.set_jieju(unit)
+        
+        jieju_flag = self.jieju_check(model="part", units=others_units)
+        if self.num<500 and jieju_flag==False:
+            # 那就是没解聚完，那就继续解聚。
+            for unit in others_units:
+                self.set_jieju(unit)
+        
+        # 就准备冲一波了
+        if jieju_flag and self.num>1000:
+            # self.F2A(target_pos)
+            average_pos = self.get_pos_average(IFV_units)
+            self.group_A(IFV_units + infantry_units, target_pos)
+            self.group_A(others_units, average_pos) # 这样一来就实现了伴随掩护…吧。
 
-        if jieju_flag and self.num>1500:
+        if (self.num % 100==0) and (self.num>500):
+            # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
+            # deal with UAV.
+            self.UAV_patrol()
+
+        if jieju_flag and self.num>2000:
             # 如果快开到了，就下车然后A过去。
             IFV_pos =self.get_pos_average(IFV_units)
             jvli = self.distance(target_pos,IFV_pos)  
@@ -1457,12 +1455,13 @@ class agent_guize(Agent):
                 self.IFV_transport(model="off")
             if (jvli<5) and (flag_off==True):
                 # 那就认为是下车下完了，那就A过去了
-                self.group_A(IFV_units + infantry_units, target_pos)
-                
-        if (self.num % 100==0) and (self.num>50):
-            # deal with UAV.
-            self.UAV_patrol()
-        elif self.num>2400: # 这个时间还得标定一下最好是用距离除一除之类的。
-            # 最后收拢一下。
-            self.F2A(target_pos)
+                self.group_A(IFV_units + infantry_units, target_pos)            
+        return 
 
+    def step_scout(self):
+        # unfinished yet.
+        print("step_scout: unfinished yet.")
+
+    def step_defend(self):
+        # unfinished yet.
+        print("step_defend: unfinished yet.")
