@@ -207,11 +207,38 @@ class agent_guize(Agent):
         pos_0 = unit0["cur_hex"]
         return pos_0
 
-    def is_stop(self,attacker_ID):
+    def is_stop(self,attacker_ID, model="now"):
         # 这个就是单纯判断一下这东西是不是停着
-        unit = self.get_bop(attacker_ID)
-        flag_is_stop = unit["stop"]
+        if type(attacker_ID) == list:
+            # which means units inputted.
+            flag_is_stop = True
+            for unit in attacker_ID:
+                this_abstract_state = self.abstract_state[unit["obj_id"]]
+                if "abstract_state" in this_abstract_state:
+                    if this_abstract_state["abstract_state"]=="move_and_attack":
+                        flag_is_stop = False
+                flag_is_stop = flag_is_stop and unit["stop"]
+        else:
+            # normal
+            unit = self.get_bop(attacker_ID)
+            flag_is_stop = unit["stop"]
+        
         return flag_is_stop 
+
+    def is_exist(self,attacker_ID,**kargs):
+        # check if this obj still exist.
+        attacker_ID = self._set_compatible(attacker_ID)
+        if "units" in kargs:
+            units = kargs["units"]
+        else:
+            units = self.status["operators"]
+
+        flag_exist = False 
+        for bop in units:
+            if attacker_ID == bop["obj_id"]:
+                flag_exist = flag_exist or True
+        
+        return flag_exist
 
     def get_ID_list(self,status):
         # get iterable ID list from status or something like status.
@@ -550,8 +577,8 @@ class agent_guize(Agent):
             if my_abstract_state == {}:
                 # 默认状态的处理, it still needs discuss, about which to use.
                 # self.set_hidden_and_alert(my_ID)
-                # self.set_none(my_ID) 
-                self.set_jieju(my_ID) 
+                self.set_none(my_ID) 
+                # self.set_jieju(my_ID) 
             else:
                 # 实际的处理
                 my_abstract_state_type = my_abstract_state["abstract_state"]
@@ -830,7 +857,7 @@ class agent_guize(Agent):
             # 防止无限嵌套，得检测一下是不是本来就已经在UAV_move_on了
             # 不然好像要写python写出内存泄漏了，乐.jpg
             abstract_state_previous = copy.deepcopy(self.abstract_state[attacker_ID])
-            self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,"flag_moving": False, "jvli": 114514, "flag_attacked":False, "stopped_time":0 }
+            self.abstract_state[attacker_ID]={"abstract_state":"UAV_move_on", "target_pos":target_pos,"flag_moving": False, "jvli": 1919810, "flag_attacked":False, "stopped_time":0 }
             self.abstract_state[attacker_ID]["next"] = abstract_state_previous
         else:
             # 如果已经是UAV_move_on了，那就不用改了
@@ -954,13 +981,14 @@ class agent_guize(Agent):
             distance_start = 1
             distance_end = 2 
             candidate_pos_list = self.map.get_grid_distance(pos_attacker, distance_start, distance_end)
+            candidate_pos_list = list(candidate_pos_list)
             geshu = len(candidate_pos_list)
-            index_random = random.randint(0,geshu)
+            index_random = random.randint(0,geshu-1)
             target_pos_random = candidate_pos_list[index_random]
             
             # # 然后移动过去。不要move and attack了，直接移过去。
             # self._move_action(attacker_ID,target_pos_random)
-            self.set_move_and_attack(attacker_ID,target_pos_random)
+            self.set_move_and_attack(attacker_ID,target_pos_random,model="force")
         else:
             # 那就是还能接着解聚。
             pass
@@ -1052,8 +1080,14 @@ class agent_guize(Agent):
             infantry_pos = -1
         
         # 接管步兵的控制权。在上车完成之前，步兵的抽象状态不再生效。
-        self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
-
+        flag_infantry_exist = self.is_exist(infantry_ID)
+        if flag_infantry_exist:
+            self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
+        else:
+            # finished or infantry unit lost.
+            flag_state = 3
+            self.abstract_state[attacker_ID]["flag_state"] = flag_state
+        
         flag_time_out = self._abstract_state_timeout_check(attacker_ID)
         if flag_time_out:
             self.__finish_abstract_state(attacker_ID)
@@ -1074,7 +1108,7 @@ class agent_guize(Agent):
             elif jvli < 3000:
                 # 距离不够，那就过去接。简化逻辑，只写一个过去接，不假设过程中会动或者什么的。
                 abstract_state_next = copy.deepcopy(self.abstract_state[attacker_ID])
-                self.set_move_and_attack(attacker_ID, infantry_pos)
+                self.set_move_and_attack(attacker_ID, infantry_pos,model="force")
                 self._stop_action(infantry_ID) # 步兵的动作给它停了，乖乖站好。TODO: 这里“乖乖站好”的实现，原则上也应该用abstract_state实现才比较优雅
                 self.abstract_state[attacker_ID]["next"] = abstract_state_next  # 然后把它放回去，准备跑完了之后再复原。
             else:
@@ -1098,17 +1132,15 @@ class agent_guize(Agent):
                     # 那就是没到且可以去。
                     flag_state = 1
                     self.abstract_state[attacker_ID]["flag_state"] = flag_state
-                elif jvli > 3000:
-                    # 那就是对应的步兵已经没了，上车完成或者是真的没了。转换一下。
-                    flag_state = 3
-                    self.abstract_state[attacker_ID]["flag_state"] = flag_state
+                
             pass  
         if flag_state == 3:
             # 那这意思就是上车完事了，就结束退出。开冲放在别的地方开冲了。
             # 开冲。 如果到了就放下来分散隐蔽，兵力分散火力集中。
             # 不要再闭环到1了，这样防止这东西死循环。
             self.__finish_abstract_state(attacker_ID)
-            self.__finish_abstract_state(infantry_ID)
+            # self.__finish_abstract_state(infantry_ID)
+            # there is no infantry, so.
 
     def __handle_off_board(self,attacker_ID, infantry_ID, flag_state):
         # 这个之前是没有的。思路也是一样的，分状态分距离。# 而且这个需要好好整一下
@@ -1159,7 +1191,8 @@ class agent_guize(Agent):
             pass
         else:
             # 这个是用来处理步兵上下车逻辑的。上车之后删了，下车之后得出来
-            self.abstract_state[attacker_ID] = {}  # 统一取成空的，后面再统一变成能用的。
+            # self.abstract_state[attacker_ID] = {}  # 统一取成空的，后面再统一变成能用的。
+            self.set_none(attacker_ID)
 
         if "next" in self.abstract_state[attacker_ID]:
             next_abstract_state = self.abstract_state[attacker_ID]['next']
@@ -1240,11 +1273,15 @@ class agent_guize(Agent):
 
             # check if the on board or off board abstract state setted. attension, when the unit is moving.
             flag_ordered = False
-            if (IFV_abstract_state["abstract_state"]=="on_board") or (IFV_abstract_state["abstract_state"]=="off_board") :
-                flag_ordered = True
-            elif IFV_abstract_state["abstract_state"]=="move_and_attack":
-                if "next" in IFV_abstract_state:
-                    flag_ordered = (IFV_abstract_state["next"]["abstract_state"]=="on_board") or (IFV_abstract_state["next"]["abstract_state"]=="off_board")
+            if "abstract_state" in IFV_abstract_state:
+                if (IFV_abstract_state["abstract_state"]=="on_board") or (IFV_abstract_state["abstract_state"]=="off_board") :
+                    flag_ordered = True
+                elif IFV_abstract_state["abstract_state"]=="move_and_attack":
+                    if "next" in IFV_abstract_state:
+                        flag_ordered = (IFV_abstract_state["next"]["abstract_state"]=="on_board") or (IFV_abstract_state["next"]["abstract_state"]=="off_board")
+            else:
+                flag_ordered=True
+                # finished. 
 
 
             if (not flag_ordered) and (model == "on"):
@@ -1371,6 +1408,9 @@ class agent_guize(Agent):
         IFV_units = self.get_IFV_units()
         infantry_units = self.get_infantry_units()
         
+        self.IFV_transport(model="on")
+        return 
+
         if self.num<200:
             # 改进一下解聚的，分类.
             for unit in units:
@@ -1390,7 +1430,8 @@ class agent_guize(Agent):
         
         flag_on,flag_off = self.IFV_transport_check()
         jieju_flag = self.jieju_check(model="IFV")
-        if (self.num<500) and (jieju_flag):
+        flag_stop_infantry = self.is_stop(infantry_units)
+        if (self.num<500) and (jieju_flag) and flag_stop_infantry:
             # 处理车子和步兵。get on board after jieju finished
             if flag_on == False:
                 # 没上完车就继续上。
@@ -1405,7 +1446,7 @@ class agent_guize(Agent):
             # 这个就算是解聚完事儿、上车完事儿，然后准备冲了。
             # 或者是帧数太多顶不住了
             for unit in units:
-                self.set_move_and_attack(unit)
+                self.set_move_and_attack(unit,target_pos)
 
         if jieju_flag and self.num>1500:
             # 如果快开到了，就下车然后A过去。
@@ -1424,5 +1465,4 @@ class agent_guize(Agent):
         elif self.num>2400: # 这个时间还得标定一下最好是用距离除一除之类的。
             # 最后收拢一下。
             self.F2A(target_pos)
-
 
