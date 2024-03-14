@@ -1267,7 +1267,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
         # infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
         # 有一个遗留问题，如果不是同时被打烂，那就会不匹配，所以就要好好搞搞。
-        if self.num < 180:
+        if self.num < 114514:
             IFV_units = self.get_IFV_units()
             infantry_units = self.get_infantry_units()
             self.IFV_units = copy.deepcopy(IFV_units)
@@ -1276,7 +1276,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             IFV_units = self.IFV_units
             infantry_units = self.infantry_units
 
-        geshu=min(len(IFV_units), len(infantry_units))
+        
+        if model == "on":
+            geshu=min(len(IFV_units), len(infantry_units))
+        elif model == "off":
+            geshu=max(len(IFV_units), len(infantry_units))
         # 然后循环发命令。
         # 这个命令不重复发，发过了就不发了.
         for i in range(geshu):
@@ -1302,7 +1306,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # this is not right if jieju done.
                 # self.set_off_board(IFV_unit,infantry_units[i])
 
-                infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"]
+                infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
                 if len(infantry_ID_list)>0:
                     self.set_off_board(IFV_unit, infantry_ID_list[0])
                 else:
