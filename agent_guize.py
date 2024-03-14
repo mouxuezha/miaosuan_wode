@@ -1459,9 +1459,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 self.set_jieju(unit)
         
 
-        # then test xiache.
+        # then test xiache. F2A.
         if self.num>1000:
-            self.IFV_transport(model="off")
+            # test xiache. 
+            # self.IFV_transport(model="off")
+            self.group_A(units,target_pos)
 
         return 
         
