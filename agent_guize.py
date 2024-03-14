@@ -7,6 +7,7 @@ from ai.agent import Agent, ActionType, BopType, MoveType
 from ai.base_agent import BaseAgent
 from ai.map import Map
 import copy,random
+import numpy as np
 
 class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
     def __init__(self):
@@ -434,7 +435,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         try:
             total_actions = observation["valid_actions"][attacker_ID]
         except:
-            print("no valid_actions here")
+            # print("no valid_actions here") # 这个正常运行别开，不然命令行全是这个。
             total_actions = {}
 
         if model == "void":
@@ -556,7 +557,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         self.detected_state = self.get_detected_state(self.status)
         # self.update_detectinfo(self.detected_state)  # 记录一些用于搞提前量的缓存
 
-        self.update_field() 
+        self.update_field() # 这个是更新一下那个用于避障的标量场。
 
         # 清理一下abstract_state,被摧毁了的东西就不要在放在里面了.
         abstract_state_new = {}
@@ -806,13 +807,13 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 if (this_abstract_state == "move_and_attack") or (this_abstract_state=="jieju") or (this_abstract_state=="on_board") or (this_abstract_state=="off_board"):
                     pass
                 else:
-                    self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514}
+                    self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514, "flag_evading":False}
             except:
                 # 上面要是没try到，就说明抽象状态里面还没有这个ID，那就先设定一下也没啥不好的。
-                self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514}
+                self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514, "flag_evading":False}
         elif model == "force":
             # 这个就是不管一切的强势覆盖，如果连着发就会覆盖
-            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514}
+            self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514, "flag_evading":False}
 
 
     def set_hidden_and_alert(self, attacker_ID):
@@ -943,6 +944,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             else:
                 neighbor_field_single = self.threaten_field[neighbor_pos_single]
             neighbor_field_list.append(neighbor_field_single)
+
         # 于是再检测阈值，看有没有超过的，如果有就躲一下，没有就继续往目标去。
         if max(neighbor_field_list)>5:
             # 说明附近威胁有点大，触发规避动作
@@ -952,7 +954,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             neighbor_field_min_pos = neighbor_pos_list[neighbor_field_min_index]
             # 这下定位出威胁最小的那个格子了，那过去吧。
             self._move_action(attacker_ID, neighbor_field_min_pos)
-        else:
+            
+            # 这部分是用于debug的：
+            self.abstract_state[attacker_ID]["flag_evading"] = True # 现在这个设定，就是如果检测到一次就直接过去了，然后应该就不走了停在那儿了。
+        # else:
+        elif self.abstract_state[attacker_ID]["flag_evading"] == False:
             # 说明附近威胁尚可，那就无事发生，还是采用之前那个逻辑，往地方去就完事了。
             jvli = self.distance(target_pos,attacker_pos)  
             if jvli > 0:
@@ -966,6 +972,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # 那就是到了，那就要改抽象状态里面了。
                 self.__finish_abstract_state(attacker_ID)            
             pass 
+            
 
     def __handle_hidden_and_alert(self, attacker_ID):
         # 先来个基础版的，原地蹲下，不要取地形了。
@@ -1224,14 +1231,41 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
 
     def group_A(self, units,target_pos):
         # 这里需要一个新的结阵逻辑。
-
+        target_xy = self._hex_to_xy(target_pos)
+        ave_pos = self.get_pos_average(units=units)
+        ave_xy = self._hex_to_xy(ave_pos)
+        
         # 还是先弄出一个类似向量的东西确定方位，
+        vector_xy = target_xy - ave_xy
         # 然后确定阵形中能用的一系列位置、
+        distance_start = 0
+        distance_end = 2 
+        pos_list = self.map.get_grid_distance(target_pos, distance_start, distance_end)
         # 然后再进行一波分配。
+        # 这样，算每个点和vector_xy的夹角然后比较大小，然后索引，夹角小的就是在阵型的前面
+        vector_list = [] 
+        for pos_single in pos_list:
+            vector_single = self._hex_to_xy(pos_single) 
+            vector_list.append(vector_single)
+        print("group_A: unfinished yet")
+
+
         for unit in units:
             self.set_move_and_attack(unit,target_pos)
-        print("group_A: unfinished yet")
+        
         pass
+    
+    def _hex_to_xy(self,hex):
+        # 要搞向量运算来出阵形，所以还是有必要搞一些转换的东西的。
+        y = round(hex / 100)
+        x = hex - y *100
+        xy = np.array([x,y]) 
+        return xy
+    
+    def _xy_to_hex(self,xy):
+        hex = 100*xy[1] + xy[0]
+        hex = round(hex)
+        return hex
 
     def UAV_patrol(self):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
