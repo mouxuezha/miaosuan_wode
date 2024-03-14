@@ -1301,8 +1301,14 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             elif (not flag_ordered) and (model == "off"):
                 # this is not right if jieju done.
                 # self.set_off_board(IFV_unit,infantry_units[i])
-                infantry_ID = IFV_unit["get_off_partener_id"]
-                self.set_off_board(IFV_unit, infantry_ID)
+
+                infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"]
+                if len(infantry_ID_list)>0:
+                    self.set_off_board(IFV_unit, infantry_ID_list[0])
+                else:
+                    print("nothing to off board")
+                    pass
+
                 # get infantry_unit_id from
 
     def IFV_transport_check(self):
