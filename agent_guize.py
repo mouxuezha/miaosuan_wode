@@ -1152,13 +1152,19 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # 这个之前是没有的。思路也是一样的，分状态分距离。# 而且这个需要好好整一下
         unit_infantry = self.get_bop(infantry_ID)
         unit_attacker = self.get_bop(attacker_ID)
-        # 一样的，接管步兵的控制权。
-        self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
+        # 一样的，接管步兵的控制权。在上车完成之前，步兵的抽象状态不再生效。
+        flag_infantry_exist = self.is_exist(infantry_ID)
+        if flag_infantry_exist:
+            self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
+            flag_state = 3 # finished xiache,
+        else:
+            pass 
+
         # 然后启动超时check
         flag_time_out = self._abstract_state_timeout_check(attacker_ID)
         if flag_time_out:
             self.__finish_abstract_state(attacker_ID)
-            self.__finish_abstract_state(infantry_ID)
+            # self.__finish_abstract_state(infantry_ID)
             return
 
         if flag_state == 1:
@@ -1178,7 +1184,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         elif flag_state == 2:
             # 发了下车命令了，正在等下车CD
             self.abstract_state[attacker_ID]["num_wait"] = self.abstract_state[attacker_ID]["num_wait"] - 1
-            if self.abstract_state[attacker_ID]["num_wait"]==0:
+            if self.abstract_state[attacker_ID]["num_wait"]==1:
                 # 说明下车下好了，转换状态
                 flag_state = 3
                 self.abstract_state[attacker_ID]["flag_state"] = flag_state       
@@ -1186,7 +1192,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         elif flag_state == 3:
             # 下车下完了，就可以结束任务了。
             self.__finish_abstract_state(attacker_ID)
-            self.__finish_abstract_state(infantry_ID) # 结束对步兵的控制
+            # self.__finish_abstract_state(infantry_ID) # 结束对步兵的控制
 
     def __finish_abstract_state(self, attacker_ID):
         # print("__finish_abstract_state: unfinished yet")
@@ -1293,24 +1299,29 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             if (not flag_ordered) and (model == "on"):
                 self.set_on_board(IFV_unit,infantry_units[i])
             elif (not flag_ordered) and (model == "off"):
-                self.set_off_board(IFV_unit,infantry_units[i])
+                # this is not right if jieju done.
+                # self.set_off_board(IFV_unit,infantry_units[i])
+                infantry_ID = IFV_unit["get_off_partener_id"]
+                self.set_off_board(IFV_unit, infantry_ID)
+                # get infantry_unit_id from
 
     def IFV_transport_check(self):
         # 检测步兵是不是全部在车上或者不在车上。
         flag_on = True
-        flag_off = True
+        flag_off = True 
+        # if there is no bubing, regarded as on board. # TODO: this it not safe
         infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
+        if len(infantry_units)==0:
+            flag_on = True
+            flag_off = False 
 
         for infantry_unit in infantry_units:
             if infantry_unit["on_board"] == True:
                 flag_on = flag_on and True
+                flag_off = flag_off and False
             else:
                 flag_on = flag_on and False
-    
-            if infantry_unit["on_board"] == False:
                 flag_off = flag_off and True
-            else:
-                flag_off = flag_off and False
         
         return flag_on, flag_off 
     
@@ -1416,23 +1427,28 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         infantry_units = self.get_infantry_units()
         UAV_units = self.get_UAV_units()
         # 这个是获取别的units用来准备一开始就解聚
-        others_units = list(set(units) - set(IFV_units) - set(infantry_units) - set(UAV_units))
+        # others_units = list(set(units) - set(IFV_units) - set(infantry_units) - set(UAV_units))
+        others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
 
         flag_on,flag_off = self.IFV_transport_check()
+        jieju_flag2 = self.jieju_check(model="part", units=IFV_units)
 
-        if self.num<500 and flag_on==False:
+        if self.num<300 and flag_on==False:
             # 如果刚开始且没上车，那就先上车
             self.IFV_transport(model="on")
-        elif self.num<600:
-            self.IFV_transport(model="off") # this is for test
-            for unit in IFV_units:
-                self.set_jieju(unit)
-        
+        elif self.num<500:
+            # self.IFV_transport(model="off") # this is for test
+            if jieju_flag2==False:
+                for unit in IFV_units:
+                    self.set_jieju(unit)
+
         jieju_flag = self.jieju_check(model="part", units=others_units)
         if self.num<500 and jieju_flag==False:
             # 那就是没解聚完，那就继续解聚。
             for unit in others_units:
                 self.set_jieju(unit)
+
+        return 
         
         # 就准备冲一波了
         if jieju_flag and self.num>1000:
