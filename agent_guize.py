@@ -1447,6 +1447,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             # 那就是没解聚完，那就继续解聚。
             for unit in others_units:
                 self.set_jieju(unit)
+        
+
+        # then test xiache.
+        if self.num>1000:
+            self.IFV_transport(model="off")
 
         return 
         
