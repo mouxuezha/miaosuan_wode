@@ -963,8 +963,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             
             # 这部分是用于debug的：
             self.abstract_state[attacker_ID]["flag_evading"] = True # 现在这个设定，就是如果检测到一次就直接过去了，然后应该就不走了停在那儿了。
-        # else:
-        elif self.abstract_state[attacker_ID]["flag_evading"] == False:
+        else:
+        # elif self.abstract_state[attacker_ID]["flag_evading"] == False:
             # 说明附近威胁尚可，那就无事发生，还是采用之前那个逻辑，往地方去就完事了。
             jvli = self.distance(target_pos,attacker_pos)  
             if jvli > 0:
