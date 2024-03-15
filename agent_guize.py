@@ -946,14 +946,20 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             neighbor_field_list.append(neighbor_field_single)
 
         # 于是再检测阈值，看有没有超过的，如果有就躲一下，没有就继续往目标去。
+        unit= self.get_bop(attacker_ID)
         if max(neighbor_field_list)>5:
             # 说明附近威胁有点大，触发规避动作
-            # 触发规避，就找威胁最小的那个格子然后过去。
-            neighbor_field_min = min(neighbor_field_list)
-            neighbor_field_min_index = neighbor_field_list.index(neighbor_field_min)
-            neighbor_field_min_pos = neighbor_pos_list[neighbor_field_min_index]
-            # 这下定位出威胁最小的那个格子了，那过去吧。
-            self._move_action(attacker_ID, neighbor_field_min_pos)
+            if unit["stop"]==0:
+                # which means this unit is moving
+                self._stop_action(attacker_ID)
+            elif unit["stop"]==1:
+                #which means this unit is stop.
+                # then 触发规避，就找威胁最小的那个格子然后过去。
+                neighbor_field_min = min(neighbor_field_list)
+                neighbor_field_min_index = neighbor_field_list.index(neighbor_field_min)
+                neighbor_field_min_pos = neighbor_pos_list[neighbor_field_min_index]
+                # 这下定位出威胁最小的那个格子了，那过去吧。
+                self._move_action(attacker_ID, neighbor_field_min_pos)
             
             # 这部分是用于debug的：
             self.abstract_state[attacker_ID]["flag_evading"] = True # 现在这个设定，就是如果检测到一次就直接过去了，然后应该就不走了停在那儿了。
@@ -963,8 +969,10 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             jvli = self.distance(target_pos,attacker_pos)  
             if jvli > 0:
                 # 那就是还没到，那就继续移动
-                self._move_action(attacker_ID, target_pos)
-                unit = self.get_bop(attacker_ID)
+                if unit["stop"]==0:
+                    pass
+                elif unit["stop"]==1:
+                    self._move_action(attacker_ID, target_pos)
                 self.abstract_state[attacker_ID]["flag_moving"] = not(unit["stop"])
 
                 self.abstract_state[attacker_ID]["jvli"] = jvli
