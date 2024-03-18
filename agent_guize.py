@@ -550,7 +550,38 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             self.act.append(action)
         return self.act
     
+    def _hex_to_xy(self,hex):
+        # 要搞向量运算来出阵形，所以还是有必要搞一些转换的东西的。
+        y = round(hex / 100)
+        x = hex - y *100
+        xy = np.array([x,y]) 
+        return xy
     
+    def _xy_to_hex(self,xy):
+        hex = 100*xy[1] + xy[0]
+        hex = round(hex)
+        return hex
+
+    def find_pos_vector(self,pos_here, pos_list,vector_xy):
+        # 从pos_list中找到“从pos_here到其中的点”的向量方向最符合vector_xy的，然后返回相应的pos四位数，用于后续的move。
+        # 这个函数得好好写写，因为会高频调用。
+        # 最符合方向，那就是归一化之后的内积最大嘛，先这么搞
+        xy_here = self._hex_to_xy(pos_here)
+        index = 0
+        index_selected = 0 
+        dot_max = -1.1
+        for pos_single in pos_list:
+            xy_single = self._hex_to_xy(pos_single)
+            vector_single = xy_single-xy_here
+            dot_single = np.dot(vector_single,vector_xy) / np.linalg.norm(vector_xy) / np.linalg.norm(vector_single)
+            # dot_single in [-1, 1], 所以肯定会有某个点被选出来的
+            if dot_single>dot_max:
+                # 那就说明这个符合的更好
+                dot_max = dot_single
+                index_selected = index
+            index = index + 1 
+        return  pos_list[index_selected] # 返回值应该是一个四位的int，能拿去用的那种。
+        
     # abstract_state and related functinos
     def Gostep_abstract_state(self,**kargs):
         # 先更新一遍观测的东西，后面用到再说
@@ -590,7 +621,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # 实际的处理
                 my_abstract_state_type = my_abstract_state["abstract_state"]
                 if my_abstract_state_type == "move_and_attack":
-                    self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
+                    # self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
+                    self.__handle_move_and_attack3(my_ID, my_abstract_state["target_pos"])
                 elif my_abstract_state_type == "hidden_and_alert":
                     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
                 elif my_abstract_state_type == "open_fire":
@@ -980,7 +1012,79 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # 那就是到了，那就要改抽象状态里面了。
                 self.__finish_abstract_state(attacker_ID)            
             pass 
+
+    def __handle_move_and_attack3(self, attacker_ID, target_pos):
+        # 这个是进一步升级来的，不要路径点序列了，一次只走一格，每一格都判断威胁程度        
+        unit = self.get_bop(attacker_ID)
+        attacker_pos =self.get_pos(attacker_ID)
+        attacker_xy = self._hex_to_xy(attacker_pos)
+        target_xy = self._hex_to_xy(target_pos)
+        vector_xy = target_xy - attacker_xy
+
+        # 先打了再说。
+        self._fire_action(attacker_ID)
+
+        # 然后该打的打完了，就继续move呗
+        attacker_pos = self.get_pos(attacker_ID)
+        # 来个来个向量运算，计算出周围一圈点中，符合威胁度要求的点中，最符合向量的一个。
+        # 有威胁就开这个，没威胁就找出最符合向量的
+        try:
+            flag_arrive = (unit["move_path"][-1]==attacker_pos)
+            # 路径里的点到了，就认为到了
+        except:
+            # 要是没有路径点，那就看是不是stop
+            flag_arrive=False
+            if unit["stop"]==0:
+                flag_arrive=False
+            elif unit["stop"]==1:
+                flag_arrive=True
+
+        if flag_arrive==False:
+            # 走着呢，由于都是走一格，所以这个就没有什么所谓了吧。
+            pass 
+        elif flag_arrive==True:
+            #which means this unit is stop.
+            # 找威胁符合的点中方向最好的
+
+            # 于是先检测周围一圈的格子：
+            neighbor_pos_list = self.map.get_neighbors(attacker_pos)
+            neighbor_field_list = [] 
+            neighbor_pos_list_selected = []
+            neighbor_field_list_selected = []
+            for i in range(len(neighbor_pos_list)):
+                neighbor_pos_single = neighbor_pos_list[i]
+                if neighbor_pos_single ==-1:
+                    neighbor_field_single = 0
+                else:
+                    neighbor_field_single = self.threaten_field[neighbor_pos_single]
+                neighbor_field_list.append(neighbor_field_single)
+
+                if neighbor_field_single<5:
+                    # 选出一些比较安全的点。如果没有比较安全的点就只能用全部点了。
+                    neighbor_pos_list_selected.append(neighbor_pos_single)
+                    neighbor_field_list_selected.append(neighbor_field_single)
             
+            # 然后根据威胁情况看后面往哪里去。
+            if len(neighbor_pos_list_selected)>3:
+                # 说明周围存在相对安全一些的区域
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected,vector_xy)
+                pass
+            else:
+                # 说明周围全是高威胁的区域了，那还不如拼一枪。
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+                pass
+            
+            # 选出来之后就过去呗。
+            self._move_action(attacker_ID, pos_next)
+        
+        jvli = self.distance(target_pos,attacker_pos)  
+        if jvli > 0:
+            # 那就是还没到，那就继续移动
+            self.abstract_state[attacker_ID]["flag_moving"] = not(unit["stop"])
+            self.abstract_state[attacker_ID]["jvli"] = jvli
+        else:
+            # 那就是到了，那就要改抽象状态里面了。
+            self.__finish_abstract_state(attacker_ID)      
 
     def __handle_hidden_and_alert(self, attacker_ID):
         # 先来个基础版的，原地蹲下，不要取地形了。
@@ -1263,17 +1367,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         
         pass
     
-    def _hex_to_xy(self,hex):
-        # 要搞向量运算来出阵形，所以还是有必要搞一些转换的东西的。
-        y = round(hex / 100)
-        x = hex - y *100
-        xy = np.array([x,y]) 
-        return xy
-    
-    def _xy_to_hex(self,xy):
-        hex = 100*xy[1] + xy[0]
-        hex = round(hex)
-        return hex
+
 
     def UAV_patrol(self):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
