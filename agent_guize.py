@@ -3,13 +3,46 @@ import os
 import sys 
 import json
 sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
-from ai.agent import Agent, ActionType, BopType, MoveType
 from ai.base_agent import BaseAgent
 from ai.map import Map
 import copy,random
 import numpy as np
 
-class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
+
+class BopType:
+    Infantry, Vehicle, Aircraft = range(1, 4)
+
+
+class ActionType:
+    (
+        Move,
+        Shoot,
+        GetOn,
+        GetOff,
+        Occupy,
+        ChangeState,
+        RemoveKeep,
+        JMPlan,
+        GuideShoot,
+        StopMove,
+        WeaponLock,
+        WeaponUnFold,
+        CancelJMPlan,
+        Fork,
+        Union,
+        ChangeAltitude,
+        ActivateRadar,
+        EnterFort,
+        ExitFort,
+        LayMine,
+    ) = range(1, 21)
+
+
+class MoveType:
+    Maneuver, March, Walk, Fly = range(4)
+
+
+class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
     def __init__(self):
         self.scenario = None
         self.color = None
@@ -103,6 +136,314 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         self.map_data = None
 
         self.num = 0 
+
+    def get_scenario_info(self, scenario: int):
+        SCENARIO_INFO_PATH = os.path.join(
+            os.path.dirname(__file__), f"scenario_{scenario}.json"
+        )
+        with open(SCENARIO_INFO_PATH, encoding="utf8") as f:
+            self.scenario_info = json.load(f)
+
+    def get_bop(self, obj_id):
+        """Get bop in my observation based on its id."""
+        for bop in self.observation["operators"]:
+            if obj_id == bop["obj_id"]:
+                return bop
+
+    def gen_occupy(self, obj_id, candidate):
+        """Generate occupy action."""
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.Occupy,
+        }
+
+    def gen_shoot(self, obj_id, candidate):
+        """Generate shoot action with the highest attack level."""
+        best = max(candidate, key=lambda x: x["attack_level"])
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.Shoot,
+            "target_obj_id": best["target_obj_id"],
+            "weapon_id": best["weapon_id"],
+        }
+
+    def gen_guide_shoot(self, obj_id, candidate):
+        """Generate guide shoot action with the highest attack level."""
+        best = max(candidate, key=lambda x: x["attack_level"])
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.GuideShoot,
+            "target_obj_id": best["target_obj_id"],
+            "weapon_id": best["weapon_id"],
+            "guided_obj_id": best["guided_obj_id"],
+        }
+
+    def gen_jm_plan(self, obj_id, candidate):
+        """Generate jm plan action aimed at a random city."""
+        weapon_id = random.choice(candidate)["weapon_id"]
+        jm_pos = random.choice([city["coord"] for city in self.observation["cities"]])
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.JMPlan,
+            "jm_pos": jm_pos,
+            "weapon_id": weapon_id,
+        }
+
+    def gen_get_on(self, obj_id, candidate):
+        """Generate get on action with some probability."""
+        get_on_prob = 0.5
+        if random.random() < get_on_prob:
+            target_obj_id = random.choice(candidate)["target_obj_id"]
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.GetOn,
+                "target_obj_id": target_obj_id,
+            }
+
+    def gen_get_off(self, obj_id, candidate):
+        """Generate get off action only if the bop is within some distance of a random city."""
+        bop = self.get_bop(obj_id)
+        destination = random.choice(
+            [city["coord"] for city in self.observation["cities"]]
+        )
+        if bop and self.map.get_distance(bop["cur_hex"], destination) <= 10:
+            target_obj_id = random.choice(candidate)["target_obj_id"]
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.GetOff,
+                "target_obj_id": target_obj_id,
+            }
+
+    def gen_change_state(self, obj_id, candidate):
+        """Generate change state action with some probability."""
+        change_state_prob = 0.001
+        if random.random() < change_state_prob:
+            target_state = random.choice(candidate)["target_state"]
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.ChangeState,
+                "target_state": target_state,
+            }
+
+    def gen_remove_keep(self, obj_id, candidate):
+        """Generate remove keep action with some probability."""
+        remove_keep_prob = 0.2
+        if random.random() < remove_keep_prob:
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.RemoveKeep,
+            }
+
+    def gen_move(self, obj_id, candidate):
+        """Generate move action to a random city."""
+        bop = self.get_bop(obj_id)
+        if bop["sub_type"] == 3:
+            return
+        destination = random.choice(
+            [city["coord"] for city in self.observation["cities"]]
+        )
+        if self.my_direction:
+            destination = self.my_direction["info"]["target_pos"]
+        if bop and bop["cur_hex"] != destination:
+            move_type = self.get_move_type(bop)
+            route = self.map.gen_move_route(bop["cur_hex"], destination, move_type)
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.Move,
+                "move_path": route,
+            }
+
+    def get_move_type(self, bop):
+        """Get appropriate move type for a bop."""
+        bop_type = bop["type"]
+        if bop_type == BopType.Vehicle:
+            if bop["move_state"] == MoveType.March:
+                move_type = MoveType.March
+            else:
+                move_type = MoveType.Maneuver
+        elif bop_type == BopType.Infantry:
+            move_type = MoveType.Walk
+        else:
+            move_type = MoveType.Fly
+        return move_type
+
+    def gen_stop_move(self, obj_id, candidate):
+        """Generate stop move action only if the bop is within some distance of a random city.
+
+        High probability for the bop with passengers and low for others.
+        """
+        bop = self.get_bop(obj_id)
+        destination = random.choice(
+            [city["coord"] for city in self.observation["cities"]]
+        )
+        if self.map.get_distance(bop["cur_hex"], destination) <= 10:
+            stop_move_prob = 0.9 if bop["passenger_ids"] else 0.01
+            if random.random() < stop_move_prob:
+                return {
+                    "actor": self.seat,
+                    "obj_id": obj_id,
+                    "type": ActionType.StopMove,
+                }
+
+    def gen_WeaponLock(self, obj_id, candidate):
+        bop = self.get_bop(obj_id)
+        prob_weaponlock = 0.001
+        if (
+            max(self.map_data[bop["cur_hex"] // 100][bop["cur_hex"] % 100]["roads"]) > 0
+            or random.random() < prob_weaponlock
+        ):
+            return {"actor": self.seat, "obj_id": obj_id, "type": ActionType.WeaponLock}
+
+    def gen_WeaponUnFold(self, obj_id, candidate):
+        bop = self.get_bop(obj_id)
+        destination = random.choice(
+            [city["coord"] for city in self.observation["cities"]]
+        )
+        if self.map.get_distance(bop["cur_hex"], destination) <= 10:
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.WeaponUnFold,
+            }
+
+    def gen_cancel_JM_plan(self, obj_id, candidate):
+        cancel_prob = 0.0001
+        if random.random() < cancel_prob:
+            return {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.CancelJMPlan,
+            }
+
+    def gen_grouping_info(self, observation):
+        def partition(lst, n):
+            return [lst[i::n] for i in range(n)]
+
+        operator_ids = []
+        for operator in observation["operators"] + observation["passengers"]:
+            if operator["color"] == self.color:
+                operator_ids.append(operator["obj_id"])
+        lists_of_ops = partition(operator_ids, len(self.team_info.keys()))
+        grouping_info = {"actor": self.seat, "type": 100}
+        info = {}
+        for teammate_id in self.team_info.keys():
+            info[teammate_id] = {"operators": lists_of_ops.pop()}
+        grouping_info["info"] = info
+        return [grouping_info]
+
+    def gen_battle_direction_info(self, observation):
+        direction_info = []
+        for teammate_id in self.team_info.keys():
+            direction = {
+                "actor": self.seat,
+                "type": 201,
+                "info": {
+                    "company_id": teammate_id,
+                    "target_pos": random.choice(observation["cities"])["coord"],
+                    "start_time": 0,
+                    "end_time": 1800,
+                },
+            }
+            direction_info.append(direction)
+        return direction_info
+
+    def gen_battle_mission_info(self, observation):
+        mission_info = []
+        for teammate_id in self.team_info.keys():
+            mission = {
+                "actor": self.seat,
+                "type": 200,
+                "info": {
+                    "company_id": teammate_id,
+                    "mission_type": random.randint(0, 2),
+                    "target_pos": random.choice(observation["cities"])["coord"],
+                    "route": [
+                        random.randint(0, 9000),
+                        random.randint(0, 9000),
+                        random.randint(0, 9000),
+                    ],
+                    "start_time": 0,
+                    "end_time": 1800,
+                },
+            }
+            mission_info.append(mission)
+        return mission_info
+
+    def gen_fork(self, obj_id, candidate):
+        prob = 0.01
+        if random.random() < prob:
+            return None
+        return {"actor": self.seat, "obj_id": obj_id, "type": ActionType.Fork}
+
+    def gen_union(self, obj_id, candidate):
+        prob = 0.1
+        if random.random() < prob:
+            return None
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "target_obj_id": random.choice(candidate)["target_obj_id"],
+            "type": ActionType.Union,
+        }
+
+    def gen_change_altitude(self, obj_id, candidate):
+        prob = 0.05
+        if random.random() < prob:
+            return None
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "target_obj_id": random.choice(candidate)["target_altitude"],
+            "type": ActionType.ChangeAltitude,
+        }
+
+    def gen_activate_radar(self, obj_id, candidate):
+        prob = 1
+        if random.random() < prob:
+            return None
+        return {"actor": self.seat, "obj_id": obj_id, "type": ActionType.ActivateRadar}
+
+    def gen_enter_fort(self, obj_id, candidate):
+        prob = 0.5
+        if random.random() < prob:
+            return None
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.EnterFort,
+            "target_obj_id": random.choice(candidate)["target_obj_id"],
+        }
+
+    def gen_exit_fort(self, obj_id, candidate):
+        prob = 0.1
+        if random.random() < prob:
+            return None
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.ExitFort,
+            "target_obj_id": random.choice(candidate)["target_obj_id"],
+        }
+
+    def gen_lay_mine(self, obj_id, candidate):
+        prob = 1
+        if random.random() < prob:
+            return None
+        return {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": 20,
+            "target_pos": random.randint(0, 9177),
+        }
 
     # assistant functions 
     def get_detected_state(self,state):
@@ -1391,7 +1732,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         
         # 组装一个矩阵用于排序：每一行应该是[pos, dot_single]，然后照着dot_single排序后往里填充东西。
         geshu = len(pos_list)
-        array_sort = np.append(np.array(pos_list).reshape(geshu,1), np.array(dot_list).reshape(geshu,1))
+        array_sort = np.append(np.array(list(pos_list)).reshape(geshu,1), np.array(dot_list).reshape(geshu,1),axis=1)
         array_sorted = array_sort[array_sort[:,1].argsort()] # 按照第二列进行排序。
         
         # 然后就可以往里面分配了。专业一点，这里再搞一个分类
