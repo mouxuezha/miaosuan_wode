@@ -266,20 +266,32 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # print("distance: unfinished yet")
         return jvli
     
-    def get_IFV_units(self):
+    def get_IFV_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]
         # double select by type.
-        IFV_units = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+        IFV_units = self.select_by_type(units_input,key="sub_type",value=1)
         IFV_units = self.select_by_type(IFV_units,key="color",value=0)
         return IFV_units
     
-    def get_infantry_units(self):
+    def get_infantry_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]        
         # same
-        infantry_units = self.select_by_type(self.status["operators"],key="sub_type",value=2)
+        infantry_units = self.select_by_type(units_input,key="sub_type",value=2)
         infantry_units = self.select_by_type(infantry_units,key="color",value=0)
         return infantry_units       
 
-    def get_UAV_units(self):
-        UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
+    def get_UAV_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]         
+        UAV_units = self.select_by_type(units_input,key="sub_type",value=5)
         UAV_units = self.select_by_type(UAV_units,key="color",value=0)
         return UAV_units
     
@@ -621,8 +633,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # 实际的处理
                 my_abstract_state_type = my_abstract_state["abstract_state"]
                 if my_abstract_state_type == "move_and_attack":
-                    # self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
-                    self.__handle_move_and_attack3(my_ID, my_abstract_state["target_pos"])
+                    self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
+                    # self.__handle_move_and_attack3(my_ID, my_abstract_state["target_pos"])
                 elif my_abstract_state_type == "hidden_and_alert":
                     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
                 elif my_abstract_state_type == "open_fire":
@@ -675,11 +687,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             if artillery_point_single["status"] == 1: # 在爆炸
                 threaten_source_single = {"pos":artillery_point_single["pos"], "type":1, "delay":0}
             elif artillery_point_single["status"] == 0: # 在飞行
-                threaten_source_single = {"pos":artillery_point_single["pos"], "type":1, "delay":150-artillery_point_single["fly_time"]}
+                threaten_source_single = {"pos":artillery_point_single["pos"], "type":1, "delay":75-artillery_point_single["fly_time"]}# 0319，实测中发现，由于移动时间会延迟，容易出现走上去的时候没事儿但是走开了就有事儿，所以时间得放开一些
             else:
                 pass # 失效了
             self.threaten_source_list.append(threaten_source_single)
-        
+                
         # 然后是有单位损失的位置,通过比较status_old和status来给出，所以这个函数要放在更新abstract_state之前。
         ID_list_now = self.get_ID_list(self.status)
         ID_list_old = self.get_ID_list(self.status_old)
@@ -1014,7 +1026,9 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             pass 
 
     def __handle_move_and_attack3(self, attacker_ID, target_pos):
-        # 这个是进一步升级来的，不要路径点序列了，一次只走一格，每一格都判断威胁程度        
+        # 这个是进一步升级来的，不要路径点序列了，一次只走一格，每一格都判断威胁程度 
+        # 0319,这个确实能用，也确实能够爽爽避障，但是是走一格停一轮的，用在穿越火线里面是不科学的。
+               
         unit = self.get_bop(attacker_ID)
         attacker_pos =self.get_pos(attacker_ID)
         attacker_xy = self._hex_to_xy(attacker_pos)
@@ -1181,7 +1195,14 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 for IFV_unit in IFV_units:
                     # 按理来说直接这么写就完事了，虽然可能下一步才更新，但是反正得好几帧才能停下，不差这点了。
                     next_IFV_abstract_state = copy.deepcopy(self.abstract_state[IFV_unit["obj_id"]])
-                    self.set_open_fire(IFV_unit, next=next_IFV_abstract_state)
+                    # 如果里面有步兵就不执行这个任务，没有步兵才执行。
+                    infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
+                    if len(infantry_ID_list) >0 :
+                        # 说明这个里面有兵，那原则上就不让它停下来等着打了。
+                        pass 
+                    else:
+                        # 说明这个里面没有兵
+                        self.set_open_fire(IFV_unit, next=next_IFV_abstract_state)
             else:
                 # 到这里原则上已经停好了，UAV和IFV都停好了
                 # 那就想想办法干它一炮
@@ -1337,11 +1358,16 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
     def F2A(self,target_pos):
         units = self.status["operators"]
         for unit in units:
-            self.set_move_and_attack(unit,target_pos)
+            self.set_move_and_attack(unit,target_pos,model="force")
             # A了A了，都这时候了还要个毛的脑子，直接头铁
         pass
 
     def group_A(self, units,target_pos):
+        print("group_A: unfinished yet")
+        for unit in units:
+            self.set_move_and_attack(unit,target_pos)
+        pass
+
         # 这里需要一个新的结阵逻辑。
         target_xy = self._hex_to_xy(target_pos)
         ave_pos = self.get_pos_average(units=units)
@@ -1355,18 +1381,32 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         pos_list = self.map.get_grid_distance(target_pos, distance_start, distance_end)
         # 然后再进行一波分配。
         # 这样，算每个点和vector_xy的夹角然后比较大小，然后索引，夹角小的就是在阵型的前面
-        vector_list = [] 
+        # 也有点问题，这个搞法应该是夹角小的就在阵型的矛头上。所以比较理想的应该是坦克装甲车辆在矛头上，步兵在两翼
+        dot_list = [] 
         for pos_single in pos_list:
-            vector_single = self._hex_to_xy(pos_single) 
-            vector_list.append(vector_single)
-        print("group_A: unfinished yet")
-
-
-        for unit in units:
-            self.set_move_and_attack(unit,target_pos)
+            xy_single = self._hex_to_xy(pos_single) 
+            vector_single = xy_single - ave_xy
+            dot_single = np.dot(vector_xy, vector_single) / np.linalg.norm(vector_xy) / np.linalg.norm(vector_single)
+            dot_list.append(dot_single)
         
-        pass
-    
+        # 组装一个矩阵用于排序：每一行应该是[pos, dot_single]，然后照着dot_single排序后往里填充东西。
+        geshu = len(pos_list)
+        array_sort = np.append(np.array(pos_list).reshape(geshu,1), np.array(dot_list).reshape(geshu,1))
+        array_sorted = array_sort[array_sort[:,1].argsort()] # 按照第二列进行排序。
+        
+        # 然后就可以往里面分配了。专业一点，这里再搞一个分类
+        IFV_units = self.get_IFV_units()
+        infantry_units = self.get_infantry_units()
+        UAV_units = self.get_UAV_units()
+        others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+        
+        units_sorted=others_units+IFV_units+infantry_units
+        # 坦克装甲车辆在矛头，步兵什么的在两翼和后面，每个格子来三个东西。
+        for i in range(len(units_sorted)):
+            unit_single = units_sorted[i]
+            index_pos = round(i/3)  # 这个处理比较傻逼，但是不管了，也不是不能用。
+            target_pos_single = array_sorted[index_pos,0]
+            self.set_move_and_attack(unit,target_pos_single)    
 
 
     def UAV_patrol(self):
@@ -1594,38 +1634,21 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             for unit in others_units:
                 self.set_jieju(unit)
         
-
         # then test xiache. F2A.
         if self.num>1000:
             # test xiache. 
             # self.IFV_transport(model="off")
             self.group_A(units,target_pos)
-
-        return 
+        elif self.num>2200:
+            # 最后一波了，直接F2A了
+            self.F2A(target_pos)
         
-        # 就准备冲一波了
-        if jieju_flag and self.num>1000:
-            # self.F2A(target_pos)
-            average_pos = self.get_pos_average(IFV_units)
-            self.group_A(IFV_units + infantry_units, target_pos)
-            self.group_A(others_units, average_pos) # 这样一来就实现了伴随掩护…吧。
-
         if (self.num % 100==0) and (self.num>500):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.
             self.UAV_patrol()
-
-        if jieju_flag and self.num>2000:
-            # 如果快开到了，就下车然后A过去。
-            IFV_pos =self.get_pos_average(IFV_units)
-            jvli = self.distance(target_pos,IFV_pos)  
-            if (jvli < 5) and (flag_off==False):
-                # 那就视为快到了，那就下车了。
-                self.IFV_transport(model="off")
-            if (jvli<5) and (flag_off==True):
-                # 那就认为是下车下完了，那就A过去了
-                self.group_A(IFV_units + infantry_units, target_pos)            
         return 
+
 
     def step_scout(self):
         # unfinished yet.
