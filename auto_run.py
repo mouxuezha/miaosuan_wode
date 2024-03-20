@@ -108,6 +108,7 @@ def save_replay(replay_name, data):
 
 
 if __name__ == "__main__":
-    shishi = auto_run()
-    shishi.run_single()
+    for i in range(5):
+        shishi = auto_run()
+        shishi.run_single()
 
