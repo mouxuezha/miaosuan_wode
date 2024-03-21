@@ -1750,7 +1750,7 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
             self.set_move_and_attack(unit,target_pos_single)    
 
 
-    def UAV_patrol(self):
+    def UAV_patrol(self, target_pos):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
 
         # 不要重复下命令，不然就把时间都刷没了
@@ -1769,7 +1769,8 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
             # if nothing detected, then nothing happen.
             # no, if nothing detected, then random patrol target
             pos_ave =self.get_pos_average(self.status["operators"]) 
-            target_pos_random = pos_ave + 10**(random.randint(0,1)*2) * random.randint(10,20)
+            pos_center = round((pos_ave+target_pos)/2)
+            target_pos_random = pos_center + 10**(random.randint(0,1)*2) * random.randint(10,20)
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
                 if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
