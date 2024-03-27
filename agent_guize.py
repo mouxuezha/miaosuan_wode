@@ -596,10 +596,12 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
     def get_pos_average(self,units):
         geshu = len(units)
         pos_ave = 0 
+        pos_sum = 0
         for i in range(geshu):
-            pos_ave = (pos_ave/(i+0.000001) + self.get_pos(units[i]["obj_id"])) / (i+1)
+            # pos_ave = (pos_ave/(i+0.000001) + self.get_pos(units[i]["obj_id"])) / (i+1)
+            pos_sum = pos_sum + self.get_pos(units[i]["obj_id"])
         
-        pos_ave = round(pos_ave)
+        pos_ave = round(pos_sum / geshu)
         return pos_ave
 
     def distance(self, target_pos, attacker_pos):
@@ -1770,7 +1772,7 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
             # no, if nothing detected, then random patrol target
             pos_ave =self.get_pos_average(self.status["operators"]) 
             pos_center = round((pos_ave+target_pos)/2)
-            target_pos_random = pos_center + 10**(random.randint(0,1)*2) * random.randint(10,20)
+            target_pos_random = pos_center + 10**(random.randint(0,1)*2) * random.randint(-3,3)
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
                 if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
@@ -1988,7 +1990,7 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
         if (self.num % 100==0) and (self.num>500):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.
-            self.UAV_patrol()
+            self.UAV_patrol(target_pos)
         return 
 
 
