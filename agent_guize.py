@@ -1985,7 +1985,7 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
             # 最后一波了，直接F2A了
             self.F2A(target_pos)
         
-        if (self.num % 100==0) and (self.num>500):
+        if (self.num % 100==0) and (self.num>500) and (self.num<2201):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.
             self.UAV_patrol()
