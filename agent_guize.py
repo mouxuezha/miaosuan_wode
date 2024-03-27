@@ -1994,8 +1994,33 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
 
     def step_scout(self):
         # unfinished yet.
+        
         print("step_scout: unfinished yet.")
 
     def step_defend(self):
         # unfinished yet.
+        
+        # 先把场景目标点在哪读出来
+        defend_pos = [0,0,0] # three in hex form
+        
+        # 经典分兵编队
+        units=self.status["operators"]           
+        IFV_units = self.get_IFV_units()
+        infantry_units = self.get_infantry_units()
+        UAV_units = self.get_UAV_units()
+        others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+
+        # 怎么判断A到了呢？姑且可以是全停下就算是A到了。或者是直接步数
+        jieju_flag = self.jieju_check(model="part", units=others_units)
+        if self.num<500 and jieju_flag==False:
+            # 那就是没解聚完，那就继续解聚。
+            for unit in others_units:
+                self.set_jieju(unit)
+        else:
+            index_chong = round((self.num % 600) / 200 ) # 这个就应该是0,1,2
+            for unit in (IFV_units+others_units+UAV_units):
+                self.group_A(defend_pos[index_chong])
+            for unit in infantry_units:
+                self.set_open_fire(unit)
+
         print("step_defend: unfinished yet.")
