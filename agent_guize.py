@@ -1896,6 +1896,17 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
             print("get_target_cross_fire: Done.")
         return  self.target_pos
 
+    def get_target_defend(self):
+        observation = self.status
+        communications = observation["communication"]
+        flag_done = False
+
+        defend_pos = []
+        for communication in communications:
+            defend_pos_single = communication["hex"]
+            defend_pos.append(defend_pos_single)
+        
+        return defend_pos
 
     # then step
     def step(self, observation: dict):
@@ -1923,7 +1934,9 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
         self.Gostep_abstract_state()
         # the real tactics in step*() function.
         # self.step0()
-        self.step_cross_fire()
+        # self.step_cross_fire()
+
+        self.step_defend()
 
         # # update the actions
         # self.Gostep_abstract_state()
@@ -2008,7 +2021,13 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
         
         # 先把场景目标点在哪读出来
         defend_pos = [0,0,0] # three in hex form
-        
+        # get the target first.
+        if self.num <2:
+            defend_pos = self.get_target_defend()
+            self.defend_pos = defend_pos
+        else:
+            defend_pos = self.defend_pos    
+
         # 经典分兵编队
         units=self.status["operators"]           
         IFV_units = self.get_IFV_units()
@@ -2023,9 +2042,9 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
             for unit in others_units:
                 self.set_jieju(unit)
         else:
-            index_chong = round((self.num % 600) / 200 ) # 这个就应该是0,1,2
-            for unit in (IFV_units+others_units+UAV_units):
-                self.group_A(defend_pos[index_chong])
+            index_chong = round(((self.num+101) % 600) / 200 ) - 1  # 这个就应该是0,1,2
+            
+            self.group_A((IFV_units+others_units+UAV_units), defend_pos[index_chong])
             for unit in infantry_units:
                 self.set_open_fire(unit)
 

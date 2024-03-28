@@ -31,6 +31,12 @@ class auto_run():
         
         pass
 
+    def __init_defend(self):
+        from agent_guize import agent_guize
+        self.env = DefendEnv(3,5,1)
+        self.agent = agent_guize()
+        self.begin = time.time()   
+
     def __init_crossfire(self):
         # from ai.agent import Agent
         from agent_guize import agent_guize
@@ -112,6 +118,6 @@ def save_replay(replay_name, data):
 
 if __name__ == "__main__":
     for i in range(5):
-        shishi = auto_run()
+        shishi = auto_run(env_name="defend")
         shishi.run_single()
 
