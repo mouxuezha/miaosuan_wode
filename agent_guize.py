@@ -2,7 +2,7 @@
 import os 
 import sys 
 import json
-sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
+sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
 from ai.base_agent import BaseAgent
 from ai.map import Map
 import copy,random
