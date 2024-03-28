@@ -1709,7 +1709,7 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
         print("group_A: unfinished yet")
         for unit in units:
             self.set_move_and_attack(unit,target_pos)
-        pass
+        return
 
         # 这里需要一个新的结阵逻辑。
         target_xy = self._hex_to_xy(target_pos)
@@ -1888,6 +1888,10 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
                 flag_done = True
         if flag_done==False:
             raise Exception("get_target_cross_fire: G!")
+            # print("WTF, it should be cross_fire, GAN")
+            # self.my_direction = []
+            # self.target_pos = self.my_direction["hex"]
+            # self.end_time = self.my_direction["end_time"]
         else:
             print("get_target_cross_fire: Done.")
         return  self.target_pos
