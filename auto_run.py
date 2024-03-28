@@ -67,8 +67,11 @@ class auto_run():
 
         ai_user_name = 'myai'
         ai_user_id = 1
+        try:
+            state = self.env.setup({'user_name': ai_user_name, 'user_id': ai_user_id})
+        except:
+            state = self.env.setup({'user_name': ai_user_name, 'user_id': ai_user_id, 'seat':1})
 
-        state = self.env.setup({'user_name': ai_user_name, 'user_id': ai_user_id})
         self.all_states.append(state[self.white_flag])
         self.agent.setup(
             {
