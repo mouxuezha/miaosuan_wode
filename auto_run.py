@@ -5,7 +5,7 @@ import os
 import time
 import zipfile
 import sys 
-sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
+sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
 from train_env.cross_fire_env import CrossFireEnv
 from train_env.scout_env import ScoutEnv
 from train_env.defend_env import DefendEnv
@@ -118,6 +118,7 @@ def save_replay(replay_name, data):
 
 if __name__ == "__main__":
     for i in range(5):
-        shishi = auto_run(env_name="defend")
+        # shishi = auto_run(env_name="defend")
+        shishi = auto_run(env_name="crossfire")
         shishi.run_single()
 
