@@ -2,8 +2,8 @@
 import os 
 import sys 
 import json
-sys.path.append("/home/vboxuser/Desktop/miaosuan_code/sdk")
-from ai.base_agent import BaseAgent
+sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
+from ai.agent import Agent
 from ai.map import Map
 import copy,random
 import numpy as np
@@ -42,7 +42,7 @@ class MoveType:
     Maneuver, March, Walk, Fly = range(4)
 
 
-class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
+class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
     def __init__(self):
         self.scenario = None
         self.color = None
@@ -1941,9 +1941,10 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
         self.Gostep_abstract_state()
         # the real tactics in step*() function.
         # self.step0()
-        # self.step_cross_fire()
 
-        self.step_defend()
+        self.step_cross_fire()
+
+        # self.step_defend()
 
         # # update the actions
         # self.Gostep_abstract_state()
@@ -2003,7 +2004,7 @@ class agent_guize(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然�
                 self.set_jieju(unit)
         
         # then test xiache. F2A.
-        if self.num>1000:
+        if self.num>600:
             # test xiache. 
             # self.IFV_transport(model="off")
             self.group_A(units,target_pos)
