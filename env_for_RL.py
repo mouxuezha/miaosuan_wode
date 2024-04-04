@@ -6,6 +6,7 @@ import os
 import datetime
 import zipfile
 import time
+import copy
 from transfer import transfer
 from agent_guize import * 
 from tools import *
@@ -24,8 +25,16 @@ class EnvForRL(object):
         self.__init_dim()  # 设定state和actor维数和上下游各种东西
 
         self.state = np.zeros(self.state_dim,) 
-        self.action = np.zeros(self.action_dim,)    
-    
+        self.action = np.zeros(self.action_dim,)  
+        self.reward = 0 
+        self.done = False  
+        self.num = 0 # num in simulation 
+        self.step_num = 0 # num for RL
+        self.shadow_step_num = [30, 30, 30] # 50  # 平台实际推的帧数 = max_step * (shadow_step_num + 1)
+        self.shadow_step_range = [0, 1000, 2000, 3000, 1145141919]
+        # 整点花的，安排一个动态的。按说粗细粒度一起来的话应该要多多区分一点儿才是。
+        self.step_num_real = 0
+
     def __init_folder(self):
         # 这些路径.使用的时候根据实际情况改改吧,先硬编码了
         # self.log_file = '/home/vboxuser/Desktop/miaosuan/miaosuan_wode/overall_result.txt'
@@ -69,6 +78,7 @@ class EnvForRL(object):
             state_dict = self.env.setup({'user_name': ai_user_name, 'user_id': ai_user_id, 'seat':1})
 
         self.state_dict = state_dict
+        self.old_state_dict = copy.deepcopy(self.state_dict)
 
         self.all_states.append(state_dict[self.white_flag])
         self.agent_guize.setup = {
@@ -121,22 +131,30 @@ class EnvForRL(object):
         hou2wei = target_pos - qian2wei*100 
         map_data_single = self.map_data[qian2wei,hou2wei]
         altitude_single = map_data_single['elev']
+        print("get_altitude need debug")
         return altitude_single
 
     def get_state_unit(self, unit):
         # avoid copy and paste code.
         state_list = [] 
         sub_type = unit["sub_type"]
-        hex_single = get_pos(unit)
+        hex_single = get_pos(unit) - self.target_pos
+        # use relative hex.
         alt_single = unit["altitude"]
         xy_single = hex_to_xy(hex_single)
         keep_remain_time = unit["keep_remain_time"]
         speed = unit["speed"]
-        state_list = [sub_type,xy_single[0],xy_single[1], alt_single, keep_remain_time, speed]
+        weapon_CD = unit["weapon_cool_time"]
+        state_list = [sub_type,xy_single[0],xy_single[1], alt_single, keep_remain_time, speed, weapon_CD]
 
         hex_around = self.map.get_neighbors(hex_single)
+        distance_start = 0 
+        distance_end = 2 
+        hex_around = self.map.get_grid_distance(hex_single,distance_start,distance_end)
+
         for i in range(len(hex_around)):
-            hex_around_single = hex_around[i]
+            hex_around_single = hex_around[i] - self.target_pos
+            # use relative hex.
             xy_around_single = hex_to_xy(hex_around_single)
             if hex_around_single >0:
                 alt_around_single = self.get_altitude(hex_around_single)
@@ -144,6 +162,7 @@ class EnvForRL(object):
                 alt_around_single = -1 
             state_list.append(xy_around_single[0],xy_around_single[1],alt_around_single)
         geshu = len(state_list)
+
         return state_list, geshu
 
 
@@ -154,48 +173,162 @@ class EnvForRL(object):
         self.state[index_now] = self.target_pos
         index_now = index_now + 1  
         
+        self.state = np.zeros(self.state_dim,)
+        # reset the self.state to avoid dimension dismatch. 
+
         # first, enemy obj state.
+        # it is not correct. we can not use undetected enemy_obj information.  
         # 0, me. 1 enemy. -1, all.
-        state_dict_enemy = state_dict[1]
-        enemy_obj_IDs = get_ID_list(state_dict_enemy)
-        geshu = min(self.blue_obj_num,len(enemy_obj_IDs))
+        # state_dict_enemy = state_dict[1]
+        # enemy_obj_IDs = get_ID_list(state_dict_enemy)
+        # geshu = min(self.blue_obj_num,len(enemy_obj_IDs))
+        # for i in range(geshu):
+        #     ID = enemy_obj_IDs[i]
+        #     unit = get_bop(ID)
+        #     state_list, geshu_single = self.get_state_unit(unit)
+
+        #     self.state[index_now:(index_now+geshu_single)] = state_list[:]
+        #     index_now = index_now + geshu 
+        
+        # then, my obj states, which include detected enemy units.
+        state_dict_my = state_dict[0]
+        my_obj_IDs = get_ID_list(state_dict_my) 
+        geshu = min((self.red_obj_num+self.blue_obj_num),len(my_obj_IDs))
         for i in range(geshu):
-            ID = enemy_obj_IDs[i]
+            ID = my_obj_IDs[i]
             unit = get_bop(ID)
             state_list, geshu_single = self.get_state_unit(unit)
 
             self.state[index_now:(index_now+geshu_single)] = state_list[:]
             index_now = index_now + geshu 
-        
-        # then, some map info.
-        
 
+        # then transfer.  ? it seems not xuyao. 
+            
+        return self.state
 
+    def calculate_reward_cross_fire(self):
+        # calculate the rl reward according to self.act and status.
+        rewrad_list = [] 
 
+        # first, the distance from target_pos.
+        # 0, me. 1 enemy. -1, all.
+        units_all_now = self.state_dict[-1]["operators"]
+        my_units_now = select_by_type(units_all_now,key="color",value=0)
+        pos_ave = get_pos_average(my_units_now)
+        jvli = self.map.get_distance(pos_ave, self.target_pos)
+        reward_jvli = 5/(jvli+0.0001)
+        rewrad_list.append(reward_jvli)
 
+        # then, reward for enemy unit detected.
+        enemy_units_detected_now =select_by_type(self.state_dict[0]["operators"], key="color",value=1)
+        num_detected =len(enemy_units_detected_now)
+        reward_detected = num_detected * 0.1
+        rewrad_list.append(reward_detected)
 
+        # then, reward for my unit keeping
+        num_living = len(my_units_now)
+        reward_living = num_living * 0.001 
+        rewrad_list.append(reward_living)
 
+        # then, reward for shoot.
+        act_shoot = select_by_type(self.act,key="type",value=2) # shoot
+        act_guided = select_by_type(self.act,key="type",value=2) # shoot
+        reward_fire = (len(act_shoot) + len(act_guided)) * 0.5 
+        rewrad_list.append(reward_fire)
 
-        # then transfer
+        # then, reward for yazhi
+        my_units_yazhied = select_by_type(my_units_now,key="keep", value=1)
+        reward_yazhi = -0.5 * len(my_units_yazhied)
+        rewrad_list.append(reward_yazhi)
 
+        # finally add them.
+        self.reward = 0 
+        for reward_single in rewrad_list:
+            self.reward = self.reward + reward_single
+
+        return self.reward 
+    
     def step(self, action):
-        
+        # 
+        self.state =self.get_state(self.state_dict[self.red_flag])
+
         # call agent_guize, 
         self.agent_guize.step(self.state_dict[self.red_flag])
-
+        self.num = self.agent_guize.num
+        self.step_num = self.step_num + 1 
+        
+        # there must be some dim to indictate if a unit should be forced stop and change target.
         # then overwrite some abstract_state 
+        action_real = action
         self.command_tank(action_real)
+        # then generate self.act. 
+        self.act = self.agent_guize.Gostep_abstract_state()
 
         # then generate action dict 
         action_dict = self.act
         state, done = self.env.step(action_dict)
         self.all_states.append(state[self.white_flag])
-        pass 
+        self.old_state_dict = copy.deepcopy(self.state_dict)
+        self.state_dict = state
+
+        # then shadow step
+        for i in range(len(self.shadow_step_num)):
+            if (self.step_num_real >= self.shadow_step_range[i]) and (self.step_num_real < self.shadow_step_range[i+1]):
+                # 在特定的步数范围内，就整上特定的shadow step 步数。
+                shadow_step_num_local = self.shadow_step_num[i]
+            else:
+                shadow_step_num_local = 30
+        for i in range(shadow_step_num_local):
+            self.act = self.shadow_step()
+            action_dict = self.act
+            state, done = self.env.step(action_dict)
+            self.all_states.append(state[self.white_flag])
+            self.old_state_dict = copy.deepcopy(self.state_dict)
+            self.state_dict = state
+
+        # then calculate the RL reward. do not use pre-defined env reward.
+        self.reward = self.calculate_reward_cross_fire()
+        # 然后处理一下返回值
+        if self.num > self.max_step:
+            # 说明步数已经够了,结束了.
+            is_done = True
+        else:
+            is_done = False
+
+        info = {}
+
+        return self.state, self.reward, is_done, info
 
     def shadow_step(self):
-        pass
+        # 这个用来实现"不发RL指令单纯空跑几帧规则",不然一个episode好几千步,就寄了
+        self.agent_guize.step(self.state_dict[self.red_flag])
+        self.num = self.agent_guize.num
+        # then generate self.act. 
+        self.act = self.agent_guize.Gostep_abstract_state()
+        
+        return self.act
+
     def command_tank(self, action_real):
-        pass
+        # assume that the first dim is "stop_flag"
+        units = self.state_dict[self.red_flag]["operators"]
+        if action_real[0] > 0:
+            # which means it should be stopped and go another pos.
+            IFV_units = self.agent_guize.get_IFV_units()
+            infantry_units = self.agent_guize.get_infantry_units()
+            UAV_units = self.agent_guize.get_UAV_units()
+            tank_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+
+            xy_new = np.array(action_real[1:2])
+            hex_new = xy_to_hex(xy_new)
+
+            self.agent_guize.group_A(tank_units,hex_new,model="force")
+            pass
+        else:
+            # which means it should not change.
+            print("AI thinks nothing should happen.")
+            pass 
+    
+
     def render(self):
         print("unfinished yet")
         pass

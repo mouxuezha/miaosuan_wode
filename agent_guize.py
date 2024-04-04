@@ -993,6 +993,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                     # 这个参数选择其实不是很讲究，要不要在这里显式传my_abstract_state["flag_state"]，其实还是可以论的。
                 elif my_abstract_state_type == "off_board":
                     self.__handle_off_board(my_ID,my_abstract_state["infantry_ID"],my_abstract_state["flag_state"])
+        return self.act
         pass
 
     def __status_filter(self,status):
@@ -1705,10 +1706,10 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             # A了A了，都这时候了还要个毛的脑子，直接头铁
         pass
 
-    def group_A(self, units,target_pos):
+    def group_A(self, units,target_pos,model='normal'):
         print("group_A: unfinished yet")
         for unit in units:
-            self.set_move_and_attack(unit,target_pos)
+            self.set_move_and_attack(unit,target_pos,model=model)
         return
 
         # 这里需要一个新的结阵逻辑。
@@ -1909,8 +1910,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         return defend_pos
 
     # then step
-    def step(self, observation: dict):
-
+    def step(self, observation: dict, model="guize"):
+        # if model = guize, then generate self.act in step, else if model = RL, then generate self.act in env rather than here.
         self.num = self.num + 1 
         if self.num == 1:
             print("Debug, moving")
@@ -1931,7 +1932,10 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         detected_state = self.get_detected_state(observation)
         
         # update the actions
-        self.Gostep_abstract_state()
+        if model == "guize":
+            self.Gostep_abstract_state()
+        elif model =="RL":
+            pass
         # the real tactics in step*() function.
         # self.step0()
 
