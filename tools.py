@@ -69,19 +69,35 @@ def get_bop(obj_id, **kargs):
 def get_pos(attacker_ID, **kargs):
         # just found pos according to attacker_ID
         # print("get_pos: unfinished yet")
-        unit0 = get_bop(attacker_ID,**kargs)
+        if type(attacker_ID) == dict:
+            unit0 = attacker_ID
+        elif "status" in kargs:
+            unit0 = get_bop(attacker_ID,**kargs)
+        else:
+            raise Exception("invalid input in get_pos")
         pos_0 = unit0["cur_hex"]
         return pos_0
 
-def hex_to_xy(self,hex):
+def hex_to_xy(hex):
         # 要搞向量运算来出阵形，所以还是有必要搞一些转换的东西的。
-        y = round(hex / 100)
+        if hex<0:
+            flag_fushu = -1 
+            hex = hex * -1 
+        else:
+            flag_fushu = 1 
+            hex = hex * 1              
+
+        y = np.floor(hex / 100)
         x = hex - y *100
-        xy = np.array([x,y]) 
+        xy = np.array([x,y]) * flag_fushu
         return xy
     
-def xy_to_hex(self,xy):
-        hex = 100*xy[1] + xy[0]
+def xy_to_hex(xy):
+        if abs(xy[1]) <1:
+            xy[1] = 0 
+        if (xy[0]*xy[1])<0:
+            raise Exception("invalid xy in xy_to_hex")
+        hex = 100*round(xy[1]) + xy[0]
         hex = round(hex)
         return hex
 
@@ -91,7 +107,14 @@ def get_pos_average(units):
         pos_sum = 0
         for i in range(geshu):
             # pos_ave = (pos_ave/(i+0.000001) + self.get_pos(units[i]["obj_id"])) / (i+1)
-            pos_sum = pos_sum + get_pos(units[i]["obj_id"])
+            pos_sum = pos_sum + get_pos(units[i])
         
         pos_ave = round(pos_sum / geshu)
         return pos_ave
+
+if __name__ == "__main__":
+    # these for tool test
+    print("tools: testing")
+    jieguo = hex_to_xy(6286)
+    print(jieguo)
+    pass

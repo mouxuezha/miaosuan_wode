@@ -34,6 +34,7 @@ class EnvForRL(object):
         self.shadow_step_range = [0, 1000, 2000, 3000, 1145141919]
         # 整点花的，安排一个动态的。按说粗细粒度一起来的话应该要多多区分一点儿才是。
         self.step_num_real = 0
+        self.max_step = 8208820
 
     def __init_folder(self):
         # 这些路径.使用的时候根据实际情况改改吧,先硬编码了
@@ -56,6 +57,7 @@ class EnvForRL(object):
         # it should be point out that agent_guize is not the 'agent' in RL framework, instead, agent_guize is part of RL evironment.
         self.env = CrossFireEnv()
         self.begin = time.time()     
+        self.max_step = 2800 
         # these flags identified the status from env.
         self.red_flag = 0
         self.blue_flag = 1
@@ -64,7 +66,7 @@ class EnvForRL(object):
         self.red_obj_num = 16 # need debug.
         self.blue_obj_num = 4 
         
-        self.get_target_cross_fire() 
+        # self.get_target_cross_fire() 
 
         # varialbe to build replay
         self.all_states = [] 
@@ -81,7 +83,8 @@ class EnvForRL(object):
         self.old_state_dict = copy.deepcopy(self.state_dict)
 
         self.all_states.append(state_dict[self.white_flag])
-        self.agent_guize.setup = {
+        self.agent_guize.setup(
+            {
                 "scenario": self.env.scenario_data,
                 "basic_data": self.env.basic_data,
                 "cost_data": self.env.cost_data,
@@ -92,6 +95,7 @@ class EnvForRL(object):
                 "user_name": ai_user_name,
                 "user_id": ai_user_id,
             }
+        )        
         self.map = self.agent_guize.map
         self.map_data = self.agent_guize.map_data
         pass 
@@ -105,7 +109,7 @@ class EnvForRL(object):
     
     def get_target_cross_fire(self):
         # call one time for one game.
-        observation = self.status
+        observation = self.state_dict[0]
         communications = observation["communication"]
         flag_done = False
         for command in communications:
@@ -129,16 +133,17 @@ class EnvForRL(object):
     def get_altitude(self,target_pos):
         qian2wei = round(target_pos / 100)
         hou2wei = target_pos - qian2wei*100 
-        map_data_single = self.map_data[qian2wei,hou2wei]
+        map_data_single = self.map_data[qian2wei][hou2wei]
         altitude_single = map_data_single['elev']
-        print("get_altitude need debug")
+        # print("get_altitude need debug")
         return altitude_single
 
     def get_state_unit(self, unit):
         # avoid copy and paste code.
         state_list = [] 
         sub_type = unit["sub_type"]
-        hex_single = get_pos(unit) - self.target_pos
+        hex_absolute = get_pos(unit,status=self.state_dict[self.red_flag]) 
+        hex_single = hex_absolute - self.target_pos
         # use relative hex.
         alt_single = unit["altitude"]
         xy_single = hex_to_xy(hex_single)
@@ -147,20 +152,26 @@ class EnvForRL(object):
         weapon_CD = unit["weapon_cool_time"]
         state_list = [sub_type,xy_single[0],xy_single[1], alt_single, keep_remain_time, speed, weapon_CD]
 
-        hex_around = self.map.get_neighbors(hex_single)
+        # hex_around = self.map.get_neighbors(hex_absolute)
         distance_start = 0 
         distance_end = 2 
-        hex_around = self.map.get_grid_distance(hex_single,distance_start,distance_end)
+        hex_around = self.map.get_grid_distance(hex_absolute,distance_start,distance_end)
 
-        for i in range(len(hex_around)):
-            hex_around_single = hex_around[i] - self.target_pos
+        for hex_around_single_abs in hex_around:
+            # hex_around_single = hex_around[i] - self.target_pos
+            hex_around_single = hex_around_single_abs - self.target_pos
             # use relative hex.
             xy_around_single = hex_to_xy(hex_around_single)
-            if hex_around_single >0:
-                alt_around_single = self.get_altitude(hex_around_single)
+            if hex_around_single_abs >0:
+                alt_around_single = self.get_altitude(hex_around_single_abs)
             else:
                 alt_around_single = -1 
-            state_list.append(xy_around_single[0],xy_around_single[1],alt_around_single)
+                xy_around_single = [-100,-100] 
+            try:
+                threaten_field_single = self.agent_guize.threaten_field[hex_around_single_abs] 
+            except KeyError:
+                threaten_field_single = 0 
+            state_list = state_list + [xy_around_single[0],xy_around_single[1],alt_around_single,threaten_field_single]
         geshu = len(state_list)
 
         return state_list, geshu
@@ -191,16 +202,16 @@ class EnvForRL(object):
         #     index_now = index_now + geshu 
         
         # then, my obj states, which include detected enemy units.
-        state_dict_my = state_dict[0]
+        state_dict_my = state_dict
         my_obj_IDs = get_ID_list(state_dict_my) 
         geshu = min((self.red_obj_num+self.blue_obj_num),len(my_obj_IDs))
         for i in range(geshu):
             ID = my_obj_IDs[i]
-            unit = get_bop(ID)
+            unit = get_bop(ID,status=state_dict_my)
             state_list, geshu_single = self.get_state_unit(unit)
 
             self.state[index_now:(index_now+geshu_single)] = state_list[:]
-            index_now = index_now + geshu 
+            index_now = index_now + geshu_single 
 
         # then transfer.  ? it seems not xuyao. 
             
@@ -250,6 +261,12 @@ class EnvForRL(object):
     
     def step(self, action):
         # 
+        # get the target first.
+        if self.num <2:
+            target_pos = self.get_target_cross_fire()
+        else:
+            target_pos = self.target_pos        
+
         self.state =self.get_state(self.state_dict[self.red_flag])
 
         # call agent_guize, 
@@ -280,11 +297,6 @@ class EnvForRL(object):
                 shadow_step_num_local = 30
         for i in range(shadow_step_num_local):
             self.act = self.shadow_step()
-            action_dict = self.act
-            state, done = self.env.step(action_dict)
-            self.all_states.append(state[self.white_flag])
-            self.old_state_dict = copy.deepcopy(self.state_dict)
-            self.state_dict = state
 
         # then calculate the RL reward. do not use pre-defined env reward.
         self.reward = self.calculate_reward_cross_fire()
@@ -305,7 +317,11 @@ class EnvForRL(object):
         self.num = self.agent_guize.num
         # then generate self.act. 
         self.act = self.agent_guize.Gostep_abstract_state()
-        
+        action_dict = self.act
+        state, done = self.env.step(action_dict)
+        self.all_states.append(state[self.white_flag])
+        self.old_state_dict = copy.deepcopy(self.state_dict)
+        self.state_dict = state        
         return self.act
 
     def command_tank(self, action_real):
@@ -318,9 +334,12 @@ class EnvForRL(object):
             UAV_units = self.agent_guize.get_UAV_units()
             tank_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
 
-            xy_new = np.array(action_real[1:2])
+            pos_ave_tank = get_pos_average(tank_units)
+            
+            # xy_new = np.array(action_real[1:3]) + hex_to_xy(self.target_pos)
+            xy_new = np.array(action_real[1:3]) + hex_to_xy(pos_ave_tank)
             hex_new = xy_to_hex(xy_new)
-
+            
             self.agent_guize.group_A(tank_units,hex_new,model="force")
             pass
         else:
@@ -347,6 +366,8 @@ if __name__ == "__main__":
         shishi_env.reset()
         for i in range(step_num_max):
             # random_action = (np.random.random((4,)) - 0.5) * 2 * shishi_env.action_abs_max
-            random_action = (np.random.random((2,)) - 0.5) * 2
+            random_action = (np.random.random((3,)) - 0.5) * 2
+            # random_action[0]=np.random.randint(0,1)
+            random_action[0] = 1
             shishi_env.step(random_action)
         print("EnvForRL: 起码跑起来了")    

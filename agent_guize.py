@@ -7,7 +7,7 @@ from ai.agent import Agent
 from ai.map import Map
 import copy,random
 import numpy as np
-
+from tools import *
 
 class BopType:
     Infantry, Vehicle, Aircraft = range(1, 4)
@@ -907,14 +907,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
     
     def _hex_to_xy(self,hex):
         # 要搞向量运算来出阵形，所以还是有必要搞一些转换的东西的。
-        y = round(hex / 100)
-        x = hex - y *100
-        xy = np.array([x,y]) 
+        xy = hex_to_xy(hex)
         return xy
     
     def _xy_to_hex(self,xy):
-        hex = 100*xy[1] + xy[0]
-        hex = round(hex)
+        hex = xy_to_hex(xy)
         return hex
 
     def find_pos_vector(self,pos_here, pos_list,vector_xy):
