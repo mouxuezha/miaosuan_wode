@@ -10,3 +10,7 @@ the link of this this game: http://turingai.ia.ac.cn/data_center/show/10
 正确的复盘系统：http://wargame.ia.ac.cn/newReplay
 
 提交的通道：http://wargame.ia.ac.cn/usercenter/msai
+
+xzbs的：
+http://wargame.ia.ac.cn/eventDetail?eventId=89
+http://wargame.ia.ac.cn/gitlab/xz2024/starter-kit

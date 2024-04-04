@@ -1279,6 +1279,13 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         if "next" in kargs:
             self.abstract_state[attacker_ID]["next"] = kargs["next"]
 
+    def set_capture(self, attacker_ID, target_pos):
+        # 这个是类似上下车那种复合型的，就是冲到那里，夺控，然后结束。冲的过程就open fire了。
+        pass
+    
+    def __handle_set_capture(self, attacker_ID, target_pos):
+        pass 
+
     def __handle_move_and_attack(self, attacker_ID, target_pos):
         # 这个是改进开火的。不带避障
         flag_attack = True  # 调试，开始打炮了。
@@ -2039,15 +2046,15 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
 
         # 怎么判断A到了呢？姑且可以是全停下就算是A到了。或者是直接步数
         jieju_flag = self.jieju_check(model="part", units=others_units)
-        if self.num<500 and jieju_flag==False:
+        if self.num<100 and jieju_flag==False:
             # 那就是没解聚完，那就继续解聚。
-            for unit in others_units:
+            for unit in (others_units+infantry_units+IFV_units):
                 self.set_jieju(unit)
         else:
             index_chong = round(((self.num+101) % 600) / 200 ) - 1  # 这个就应该是0,1,2
             
-            self.group_A((IFV_units+others_units+UAV_units), defend_pos[index_chong])
-            for unit in infantry_units:
+            self.group_A((others_units+UAV_units), defend_pos[index_chong])
+            for unit in IFV_units+infantry_units:
                 self.set_open_fire(unit)
 
         print("step_defend: unfinished yet.")
