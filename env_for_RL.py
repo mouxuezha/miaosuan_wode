@@ -270,7 +270,7 @@ class EnvForRL(object):
         self.state =self.get_state(self.state_dict[self.red_flag])
 
         # call agent_guize, 
-        self.agent_guize.step(self.state_dict[self.red_flag])
+        self.agent_guize.step(self.state_dict[self.red_flag], model="RL")
         self.num = self.agent_guize.num
         self.step_num = self.step_num + 1 
         
@@ -313,7 +313,7 @@ class EnvForRL(object):
 
     def shadow_step(self):
         # 这个用来实现"不发RL指令单纯空跑几帧规则",不然一个episode好几千步,就寄了
-        self.agent_guize.step(self.state_dict[self.red_flag])
+        self.agent_guize.step(self.state_dict[self.red_flag], model="guize")
         self.num = self.agent_guize.num
         # then generate self.act. 
         self.act = self.agent_guize.Gostep_abstract_state()

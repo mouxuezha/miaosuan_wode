@@ -662,7 +662,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 "type": ActionType.StopMove
                 }
         # self.act.append(action_stop)
-        self._action_check_and_append(action_stop)
+        
+        if self.num > 600:
+            print("debug: disable all stop action")
+        else:
+            self._action_check_and_append(action_stop)
         return self.act
 
     def _fire_action(self,attacker_ID, target_ID="None", weapon_type="None"):
@@ -973,8 +977,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # 实际的处理
                 my_abstract_state_type = my_abstract_state["abstract_state"]
                 if my_abstract_state_type == "move_and_attack":
-                    self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
-                    # self.__handle_move_and_attack3(my_ID, my_abstract_state["target_pos"])
+                    # self.__handle_move_and_attack2(my_ID, my_abstract_state["target_pos"])
+                    self.__handle_move_and_attack3(my_ID, my_abstract_state["target_pos"])
                 elif my_abstract_state_type == "hidden_and_alert":
                     self.__handle_hidden_and_alert(my_ID)  # 兼容版本的，放弃取地形了。
                 elif my_abstract_state_type == "open_fire":
@@ -1388,6 +1392,9 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
 
         # 然后该打的打完了，就继续move呗
         attacker_pos = self.get_pos(attacker_ID)
+        # if arrived, then stay.
+        if target_pos == self.target_pos:
+            return 
         # 来个来个向量运算，计算出周围一圈点中，符合威胁度要求的点中，最符合向量的一个。
         # 有威胁就开这个，没威胁就找出最符合向量的
         try:
@@ -1396,10 +1403,14 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         except:
             # 要是没有路径点，那就看是不是stop
             flag_arrive=False
-            if unit["stop"]==0:
-                flag_arrive=False
-            elif unit["stop"]==1:
+            # if unit["stop"]==0:
+            #     flag_arrive=False
+            # elif unit["stop"]==1:
+            #     flag_arrive=True
+            if unit["speed"]==0:
                 flag_arrive=True
+            else:
+                flag_arrive=False
 
         if flag_arrive==False:
             # 走着呢，由于都是走一格，所以这个就没有什么所谓了吧。
