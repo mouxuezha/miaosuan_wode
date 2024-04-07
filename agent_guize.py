@@ -126,6 +126,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             setup_info["see_data"]
         )  # use 'Map' class as a tool
         self.map_data = self.map.get_map_data()
+
     def reset(self):
         self.scenario = None
         self.color = None
@@ -593,15 +594,27 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 ID_list.append(operator["obj_id"])
         return ID_list
 
-    def get_pos_average(self,units):
+    def get_pos_average(self,units,model="input_units"):
         geshu = len(units)
-        pos_ave = 0 
-        pos_sum = 0
+        x_sum = 0 
+        y_sum = 0 
+        x_ave = 0
+        y_ave = 0 
         for i in range(geshu):
-            # pos_ave = (pos_ave/(i+0.000001) + self.get_pos(units[i]["obj_id"])) / (i+1)
-            pos_sum = pos_sum + self.get_pos(units[i]["obj_id"])
+            if model == "input_units":
+                # which means everything is ok.
+                pos_this = self.get_pos(units[i]["obj_id"])
+            elif model == "input_hexs":
+                pos_this = units[i]
+            xy_this = self._hex_to_xy(pos_this)
+
+            x_sum = x_sum + xy_this[0]
+            y_sum = y_sum + xy_this[1]
         
-        pos_ave = round(pos_sum / geshu)
+        x_ave = round(x_sum/geshu)
+        y_ave = round(y_sum/geshu)
+        pos_ave = self._xy_to_hex([x_ave,y_ave])
+
         return pos_ave
 
     def distance(self, target_pos, attacker_pos):
@@ -663,10 +676,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 }
         # self.act.append(action_stop)
         
-        if self.num > 600:
-            print("debug: disable all stop action")
-        else:
-            self._action_check_and_append(action_stop)
+        # if self.num > 600:
+        #     print("debug: disable all stop action")
+        # else:
+        #     self._action_check_and_append(action_stop)
+        self._action_check_and_append(action_stop)
         return self.act
 
     def _fire_action(self,attacker_ID, target_ID="None", weapon_type="None"):
@@ -1393,7 +1407,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # 然后该打的打完了，就继续move呗
         attacker_pos = self.get_pos(attacker_ID)
         # if arrived, then stay.
-        if target_pos == self.target_pos:
+        if np.linalg.norm(vector_xy) <0.000001:
+            self.__finish_abstract_state(attacker_ID)
             return 
         # 来个来个向量运算，计算出周围一圈点中，符合威胁度要求的点中，最符合向量的一个。
         # 有威胁就开这个，没威胁就找出最符合向量的
@@ -1787,8 +1802,13 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             # if nothing detected, then nothing happen.
             # no, if nothing detected, then random patrol target
             pos_ave =self.get_pos_average(self.status["operators"]) 
-            pos_center = round((pos_ave+target_pos)/2)
-            target_pos_random = pos_center + 10**(random.randint(0,1)*2) * random.randint(-3,3)
+            pos_center = self.get_pos_average([pos_ave,target_pos], model="input_hexs")
+            
+            pos_around_list = list(self.map.get_grid_distance(pos_center,3,5))
+            target_pos_random = pos_around_list[random.randint(0,len(pos_around_list)-1)]
+            if target_pos_random == -1:
+                target_pos_random = pos_center
+
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
                 if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
@@ -2000,34 +2020,39 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         flag_on,flag_off = self.IFV_transport_check()
         jieju_flag2 = self.jieju_check(model="part", units=IFV_units)
 
-        if self.num<300 and flag_on==False:
+        if flag_on==False:
             # 如果刚开始且没上车，那就先上车
             self.IFV_transport(model="on")
-        elif self.num<500:
+        elif flag_on==True:
             # self.IFV_transport(model="off") # this is for test
             if jieju_flag2==False:
                 for unit in IFV_units:
                     self.set_jieju(unit)
 
         jieju_flag = self.jieju_check(model="part", units=others_units)
-        if self.num<500 and jieju_flag==False:
+        # if self.num<500 and jieju_flag==False:
+        if jieju_flag==False:
             # 那就是没解聚完，那就继续解聚。
             for unit in others_units:
                 self.set_jieju(unit)
         
-        # then test xiache. F2A.
-        if self.num>600:
-            # test xiache. 
-            # self.IFV_transport(model="off")
-            self.group_A(units,target_pos)
-        elif self.num>2200:
+        # F2A.
+        # if self.num>600:
+        if jieju_flag == True:
+            self.group_A(others_units,target_pos)
+        if jieju_flag2 == True:
+            self.group_A(IFV_units,target_pos)
+
+        if self.num>1000:
             # 最后一波了，直接F2A了
             self.F2A(target_pos)
         
         if (self.num % 100==0) and (self.num>500) and (self.num<2201):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.
-            self.UAV_patrol(target_pos)
+            # self.UAV_patrol(target_pos)
+            # kaibai is fine.
+            self.group_A(UAV_units,target_pos)
         return 
 
 
