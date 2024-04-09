@@ -87,6 +87,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # 这个是用来避障的。元素是dic，包括威胁源的位置、种类和时间延迟，后面不够再来补充可也。{pos: int , type: int, delay: int} # 不需要标记时间炮火持续时间那种，持续完了直接删了就行了。但是飞行中是要标记的。
         # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost . -1 for my unit, negative threaten
         self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
+        self.env_name = "cross_fire" # defualt. 
 
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
@@ -547,7 +548,10 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # just found pos according to attacker_ID
         # print("get_pos: unfinished yet")
         unit0 = self.get_bop(attacker_ID,**kargs)
-        pos_0 = unit0["cur_hex"]
+        try:
+            pos_0 = unit0["cur_hex"]
+        except:
+            pos_0 = -1 
         return pos_0
 
     def is_stop(self,attacker_ID, model="now"):
@@ -582,6 +586,17 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 flag_exist = flag_exist or True
         
         return flag_exist
+    
+    def is_arrive(self,units,target_pos,tolerance=0):
+        # check if the units
+        units_arrived = [] 
+        flag_arrive = True
+        for unit in units:
+            if abs(unit["cur_hex"] - target_pos) <= tolerance :
+                units_arrived.append(unit)
+            else:
+                flag_arrive = False
+        return flag_arrive, units_arrived
 
     def get_ID_list(self,status):
         # get iterable ID list from status or something like status.
@@ -650,7 +665,16 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         UAV_units = self.select_by_type(units_input,key="sub_type",value=5)
         UAV_units = self.select_by_type(UAV_units,key="color",value=0)
         return UAV_units
-    
+
+    def get_tank_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]         
+        UAV_units = self.select_by_type(units_input,key="sub_type",value=0)
+        UAV_units = self.select_by_type(UAV_units,key="color",value=0)
+        return UAV_units
+
     # basic AI interface.
     def _move_action(self,attacker_ID, target_pos):
         bop = self.get_bop(attacker_ID)
@@ -822,6 +846,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 selected_action_list = [3,4] 
             elif model == "jieju":
                 selected_action_list = [14] 
+            elif model == "juhe":
+                selected_action_list = [15]
             elif model == "test":
                 selected_action_list = [] 
                 for i in range(10):
@@ -891,6 +917,24 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         self._action_check_and_append(action_jieju)
         return self.act,flag_done
     
+    def _juhe_action(self,attacker_ID, target_ID):
+        candidate_actions = self._check_actions(attacker_ID,model="juhe")
+        action_juhe = {} 
+        flag_done = False
+        if len(candidate_actions)>0:
+            action_juhe = {
+                "actor": self.seat,
+                "obj_id": attacker_ID,
+                "target_obj_id": target_ID,
+                "type": 15
+            }
+            flag_done = True  
+        else:
+            # no invalid juhe action.
+            flag_done = False
+        self._action_check_and_append(action_juhe)
+        return self.act,flag_done    
+
     def _on_board_action(self,attacker_ID,infantry_ID):
         # print("_on_board_action unfinished yet")
         action_on_board = {
@@ -1001,6 +1045,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                     self.__handle_none(my_ID)  # 这个就是纯纯的停止。
                 elif my_abstract_state_type == "jieju":
                     self.__handle_jieju(my_ID) # 解聚，解完了就会自动变成none的。
+                elif my_abstract_state_type == "juhe":
+                    self.__handle_juhe(my_ID,my_abstract_state["target_ID"],my_abstract_state["role"])
                 elif my_abstract_state_type == "UAV_move_on":
                     self.__handle_UAV_move_on(my_ID,target_pos=my_abstract_state["target_pos"])
                 elif my_abstract_state_type == "on_board":
@@ -1244,6 +1290,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # just jieju if it is possible. 
         attacker_ID = self._set_compatible(attacker_ID)
         self.abstract_state[attacker_ID] = {"abstract_state": "jieju"}
+    
+    def set_juhe(self, attacker_ID, target_ID):
+        attacker_ID = self._set_compatible(attacker_ID)
+        self.abstract_state[attacker_ID] = {"abstract_state": "juhe", "target_ID":target_ID, "role":"king"}
+        self.abstract_state[target_ID] = {"abstract_state": "juhe", "target_ID":attacker_ID,"role":"knight","waiting_num":77}
 
     def set_open_fire(self,attacker_ID,**kargs):
         # 对只能站定打的东西来说，这个状态就有意义了。
@@ -1527,6 +1578,49 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
         self._fire_action(attacker_ID)
 
+    def __handle_juhe(self, attacker_ID,target_ID,role):
+        # if attacker is king, then wait, else if attacker is knight, then go and find the king.
+        flag_finish = self.is_exist(attacker_ID) and self.is_exist(attacker_ID)
+        if flag_finish == False:
+            # one of them is not exist anymore, which means juhe finished.
+            self.__finish_abstract_state(attacker_ID)
+        attacker_pos = self.get_pos(attacker_ID)
+        target_pos = self.get_pos(target_ID)
+        jvli = self.distance(target_pos,attacker_pos)          
+
+        if role == "king":
+            # then wait and send juhe zhiling
+            # if jvli is not 0, then wait.
+            if jvli ==0:
+                # then send juhe zhiling.
+                flag_done = self._juhe_action(attacker_ID,target_ID)
+                pass 
+            else:
+                # then wait. holy wait.
+                # abstract_state_next = self.abstract_state[attacker_ID]
+                # # self.set_open_fire(attacker_ID)
+                # self.set_none(attacker_ID)
+                # self.abstract_state[attacker_ID]["next"] = abstract_state_next 
+                pass
+        elif role == "knight":
+            if jvli ==0:
+                # then wait, don't do anything include set_none.
+                print("knight is waiting")
+                self.abstract_state[attacker_ID]["waiting_num"] = self.abstract_state[attacker_ID]["waiting_num"] -1 
+                if self.abstract_state[attacker_ID]["waiting_num"] == 0:
+                    # its king is not exists anymore.
+                    self.__finish_abstract_state(attacker_ID)
+                pass 
+            else:
+                # then go and find its king.
+                abstract_state_next = self.abstract_state[attacker_ID]
+                self.set_move_and_attack(attacker_ID,target_pos,model="normal")
+                self.abstract_state[attacker_ID]["next"] = abstract_state_next 
+                pass 
+        else:
+            raise Exception("invalid role when jieju.")
+
+
     def __handle_UAV_move_on(self, attacker_ID, target_pos):
         # 飞到目标点附近，站下来，如果完成了一次引导打击，就算是结束这个状态
         # 开口就是老入侵者战机/金乌轰炸机了
@@ -1782,6 +1876,41 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             target_pos_single = array_sorted[index_pos,0]
             self.set_move_and_attack(unit,target_pos_single)    
 
+    def final_juhe(self, units):
+        flag_arrived, units_arrived = self.is_arrive(units,self.target_pos,tolerance = 0 )
+
+        # cao, baoli chu miracle, force products qiji.
+        for king in units_arrived:
+            king_ID = king["obj_id"]
+            try:
+                king_abstract_state = self.abstract_state[king_ID]["abstract_state"]
+            except:
+                king_abstract_state = "none"
+                self.set_none(king_ID)
+
+            if king_abstract_state == "juhe":
+                # this one has juheing.
+                pass
+            else:
+                # give the king a kinght for juhe
+                for knight in units:
+                    knight_ID = knight["obj_id"]
+                    try:
+                        knight_abstract_state = self.abstract_state[knight_ID]["abstract_state"]
+                    except:
+                        knight_abstract_state = "none"
+                        self.set_none(knight_ID)
+ 
+                    if (knight_abstract_state == "move_and_attack" and "next" in self.abstract_state[knight_ID]) or knight_abstract_state == "juhe" or (knight_ID==king_ID):
+                        # this knight has his lord.
+                        pass 
+                    else:
+                        # it's time to set juhe
+                        self.set_juhe(king_ID, knight_ID)
+                        break
+
+        return 
+
 
     def UAV_patrol(self, target_pos):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
@@ -2013,6 +2142,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         IFV_units = self.get_IFV_units()
         infantry_units = self.get_infantry_units()
         UAV_units = self.get_UAV_units()
+        tank_units = self.get_tank_units()
         # 这个是获取别的units用来准备一开始就解聚
         # others_units = list(set(units) - set(IFV_units) - set(infantry_units) - set(UAV_units))
         others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
@@ -2038,14 +2168,20 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         
         # F2A.
         # if self.num>600:
-        if jieju_flag == True:
+        if jieju_flag == True and self.num<800:
             self.group_A(others_units,target_pos)
-        if jieju_flag2 == True:
+        if jieju_flag2 == True and self.num<800:
             self.group_A(IFV_units,target_pos)
+
+        # if arrived, then juhe.
+        if self.num>800:
+            self.final_juhe(tank_units)
+            self.final_juhe(IFV_units)
 
         if self.num>1000:
             # 最后一波了，直接F2A了
-            self.F2A(target_pos)
+            # self.F2A(target_pos)
+            pass # disabled for tiaoshi
         
         if (self.num % 100==0) and (self.num>500) and (self.num<2201):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
