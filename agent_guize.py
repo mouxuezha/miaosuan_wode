@@ -464,8 +464,28 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         self.status_old=copy.deepcopy(self.status)
 
         color_enemy = 1 - self.color
-        self.detected_state = self.select_by_type(units,key="color", value=color_enemy)
+        detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
+
+        # 这里其实有点问题，逻辑应该是探测到的敌方单位就再也不删除了，有状态更新就更新，没有就保持不变。
+        detected_state_new = []
         
+        # 去重和更新。
+        for unit_old in self.detected_state:
+            flag_updated = False
+            for unit in detected_state_single:
+                if unit_old["obj_id"] == unit["obj_id"]:
+                    # 说明这个是已经探索过的了，那就用新的
+                    detected_state_new.append(unit)
+                    flag_updated == True
+                    break
+            if flag_updated == False:
+                # 说明是探测过的都刷了一遍了都没有刷到敌人，那就用之前的去更新。
+                # 这个会高估威胁，打爆了的敌人会继续存在于态势中。
+                # 但是crossfire里面真能打爆敌人的场景也不是很多，所以也就罢了。
+                detected_state_new.append(unit_old)
+                                
+        self.detected_state = detected_state_new
+        # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
 
         return self.detected_state
     
@@ -513,6 +533,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                     units_selected.append(unit)
         
         return units_selected
+    
 
     def get_prior_list(self,unit):
         # different weapons have common CD, so one prior list for one unit seems enough.
@@ -547,7 +568,11 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
     def get_pos(self,attacker_ID, **kargs):
         # just found pos according to attacker_ID
         # print("get_pos: unfinished yet")
-        unit0 = self.get_bop(attacker_ID,**kargs)
+        if type(attacker_ID) == int:
+            unit0 = self.get_bop(attacker_ID,**kargs)
+        else:
+            unit0 = attacker_ID
+        
         try:
             pos_0 = unit0["cur_hex"]
         except:
@@ -742,6 +767,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 # no target selected.
                 # best = max(candidate, key=lambda x: x["attack_level"])
                 # target_ID_selected = best["target_obj_id"]
+                
                 # index_target_ID = ? 
 
                 target_ID_selected = target_ID_list[0]
@@ -1875,6 +1901,87 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             index_pos = round(i/3)  # 这个处理比较傻逼，但是不管了，也不是不能用。
             target_pos_single = array_sorted[index_pos,0]
             self.set_move_and_attack(unit,target_pos_single)    
+    
+    def get_pos_list_A(self, units, target_pos):
+        # 上来先维护target_pos_list,包括判断威胁等级看是不是有必要绕路。
+        pos_ave = self.get_pos_average(units)
+        xy_ave = self._hex_to_xy(pos_ave)
+        
+        target_xy= self._hex_to_xy(target_pos)
+        vector_xy = target_xy - xy_ave
+
+        enemy_infantry_units = self.select_by_type(self.detected_state,key="sub_type",value=2)
+        enemy_infantry_units_danger = [] 
+        # 如果敌方步兵在正前方了，那就别去了。同时满足距离和方向的才算。
+        for enemy_infantry_unit in enemy_infantry_units:
+            # 遍历看一下是不是需要跑。
+            enemy_pos = enemy_infantry_unit["cur_hex"]
+            enemy_xy = self._hex_to_xy(enemy_pos)
+            vector_single = enemy_xy - xy_ave
+            enemy_distance = self.map.get_distance(enemy_pos, pos_ave)
+
+            dot_single = np.dot(vector_single, vector_xy) / np.linalg.norm(vector_xy) / np.linalg.norm(vector_single)
+            
+            if enemy_distance<15 and dot_single>0.95:
+                # 这两个阈值都是从案例里抠出来的。
+                enemy_infantry_units_danger.append(enemy_infantry_unit)
+        
+        # 至此，就筛出了究极高威胁的敌方步兵的位置。然后是根据这些位置确定绕路的方向，以target_pos_list的形式放在list中。
+        if len(enemy_infantry_units_danger)>0:
+            pos_ave_enemy = self.get_pos_average(enemy_infantry_units_danger)
+            xy_ave_enemy = self._hex_to_xy(pos_ave_enemy)
+            vector_ave_enemy = xy_ave_enemy - xy_ave
+            
+            # 然后向量计算求一下那个点应该往哪边找，点乘判断正负可也，
+            # 先求两个垂直于路径的法向量。
+            n1_xy = np.array([vector_xy[1], -1*vector_xy[0]]) / np.linalg.norm(vector_xy)
+            n2_xy = -1*n1_xy
+            # 然后检测哪个比较好。
+            if np.dot(n1_xy,vector_xy)>0:
+                # 那说明是偏向这个方向，绕道的路就得往另一个方向去了。
+                n_xy_list = [n2_xy, n1_xy] 
+            else:
+                n_xy_list = [n1_xy, n2_xy] 
+            # 道理上不可能两个方向都在外面，因为起点终点在垂线的不同侧，且都在范围内。
+            # 所以两边必有一边是能够绕路的。
+
+            # 然后然后开始计算距离点了。
+            # 先取个中间点出来
+            pos_center = self.get_pos_average([pos_ave,target_pos], model="input_hexs")
+            # 然后算。反正两个方向，总得有一个对的。要是都不对也防一手。
+            xy_center = self._hex_to_xy(pos_center)
+            try:
+                xy_candidate = xy_center + 15*n_xy_list[0]
+                pos_candidate = self._xy_to_hex(xy_candidate)
+            except:
+                xy_candidate = xy_center + 15*n_xy_list[1]
+                pos_candidate = self._xy_to_hex(xy_candidate)    
+
+            return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
+              
+        
+    def list_A(self, units, target_pos, model="normal"):
+        # “选取部队横越地图”，实现一个宏观层面的绕行机制。
+        # target_pos_list作为类的一个属性在这里面自己维护了。
+        if self.num<400 and self.num%20==2: # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
+            target_pos_list = self.get_pos_list_A(units, target_pos)
+            self.target_pos_list = target_pos_list 
+        else:
+            target_pos_list = self.target_pos_list
+        
+        for unit in units:
+            # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
+            for i in range(len(target_pos_list)-1):
+                target_pos_single = target_pos_list[i]
+                pos_single = self.get_pos(unit)
+                if pos_single==target_pos_single:
+                    # 说明到了这个点了，那就去下一个点。
+                    target_pos = target_pos_list[i+1]
+                    self.set_move_and_attack(unit,target_pos,model=model)
+                else:
+                    # 没到的话就无事发生。
+                    pass
+                
 
     def final_juhe(self, units):
         flag_arrived, units_arrived = self.is_arrive(units,self.target_pos,tolerance = 0 )
