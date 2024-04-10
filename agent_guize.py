@@ -1915,7 +1915,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             target_pos_single = array_sorted[index_pos,0]
             self.set_move_and_attack(unit,target_pos_single)    
     
-    def group_A2(self,units,units_VIP, model="normal"):
+    def group_A2(self,units,units_VIP):
         # 这个以低成本实现一个跟随的。units跟随units_VIP里面距离最近的一个，跟随的逻辑是直接瞄着其当前位置就去了。
         for unit in units:
             if len(units_VIP)==0:
@@ -1929,7 +1929,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                     jvli_list.append(jvli_single)
                 jvli_min = min(jvli_list)
                 index_min = jvli_list.index(jvli_min)
-                VIP_pos_single = units_VIP[i]["cur_index"]
+                VIP_pos_single = units_VIP[index_min]["cur_hex"]
                 self.set_move_and_attack(unit,VIP_pos_single,model="force")
 
     def get_pos_list_A(self, units, target_pos):
@@ -2170,8 +2170,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         
         flag_finished = True 
         for unit in units:
-            if len(self._check_actions(unit["obj_id"], model="jieju"))==0 and unit["forking"]==0:
-                # not forking, can not fork, so the forking process finished.
+            if len(self._check_actions(unit["obj_id"], model="jieju"))==0 and unit["forking"]==0 and unit["blood"]==1:
+                # not forking, can not fork anymore, so the forking process finished.
                 flag_finished = flag_finished and True
             else:
                 flag_finished = flag_finished and False
@@ -2199,15 +2199,19 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         
         # 然后搞一下相应的初始化。
         if flag_cross_fire:
-            self.get_target_cross_fire()
+            self.env_name = "cross_fire" 
+            if self.num <2:
+                target_pos = self.get_target_cross_fire()
+            else:
+                target_pos = self.target_pos
         elif flag_scout:
-            self.get_target_cross_fire()
+            self.env_name = "scout" 
+            self.get_target_scout()
         elif flag_defend:
+            self.env_name = "defend" 
             self.get_target_defend()
         else:
             raise Exception("invalid saidao, G")
-
-                        
 
     def get_target_cross_fire(self):
         # call one time for one game.
@@ -2258,12 +2262,13 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         self.controposble_ops = observation["role_and_grouping_info"][self.seat][
             "operators"
         ]
-        communications = observation["communication"]
+        # communications = observation["communication"]
 
-        # get the detected state
-        units = observation["operators"]
-        detected_state = self.get_detected_state(observation)
-        
+        # # get the detected state
+        # units = observation["operators"]
+        # detected_state = self.get_detected_state(observation)
+        # get the target first.
+        self.distinguish_saidao()
         # update the actions
         if model == "guize":
             self.Gostep_abstract_state()
@@ -2300,13 +2305,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
     
     def step_cross_fire(self):
         # this is to tackle cross_fire.
-
-        # get the target first.
-        if self.num <2:
-            target_pos = self.get_target_cross_fire()
-        else:
-            target_pos = self.target_pos
-        
+        target_pos = self.target_pos
         units=self.status["operators"]           
         IFV_units = self.get_IFV_units()
         infantry_units = self.get_infantry_units()
@@ -2336,12 +2335,13 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 self.set_jieju(unit)
         
         # F2A.
-        # if self.num>600:
-        if jieju_flag == True and self.num<800:
-            self.group_A(others_units,target_pos)
-        if jieju_flag2 == True and self.num<800:
-            # self.group_A(IFV_units,target_pos)
-            self.list_A(IFV_units,target_pos)
+        # if jieju_flag == True and self.num<800:
+        if jieju_flag == True:
+            self.group_A(others_units,target_pos,model="force")
+            # self.group_A2(others_units,IFV_units)
+        if jieju_flag2 == True:
+            self.group_A(IFV_units,target_pos,model="force")
+            # self.list_A(IFV_units,target_pos)
 
         # if arrived, then juhe.
         if self.num>800:
@@ -2350,10 +2350,10 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
 
         if self.num>1000:
             # 最后一波了，直接F2A了
-            # self.F2A(target_pos)
+            self.F2A(target_pos)
             pass # disabled for tiaoshi
         
-        if (self.num % 100==0) and (self.num>500) and (self.num<2201):
+        if (self.num % 100==0) and (self.num>-200) and (self.num<2201):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.
             # self.UAV_patrol(target_pos)
