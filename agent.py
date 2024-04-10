@@ -1,14 +1,21 @@
+from dataclasses import dataclass
+
+from .action import ActionGenerator
+from .const import ActType, BopType, MoveType, TaskType, UnitSubType
+from .executors.cross_fire import CrossFireExecutor
+from .executors.defend import DefendExecutor
+from .executors.scout import ScoutExecutor
+from .map import Map
+
+
 # this is wode agent for miaosuan, define some layers.
 import os 
 import sys 
 import json
-sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
-
-from ai.agent import Agent
-from ai.map import Map
 import copy,random
 import numpy as np
 from tools import *
+from base_agent import BaseAgent
 
 class BopType:
     Infantry, Vehicle, Aircraft = range(1, 4)
@@ -43,7 +50,7 @@ class MoveType:
     Maneuver, March, Walk, Fly = range(4)
 
 
-class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
+class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
     def __init__(self):
         self.scenario = None
         self.color = None
@@ -129,6 +136,12 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         )  # use 'Map' class as a tool
         self.map_data = self.map.get_map_data()
 
+        self.act_gen = ActionGenerator(self.seat)
+        self.task_executors = {
+            TaskType.CrossFire: CrossFireExecutor(),
+            TaskType.Scout: ScoutExecutor(),
+            TaskType.Defend: DefendExecutor(),
+        }
     def reset(self):
         self.scenario = None
         self.color = None
@@ -2263,27 +2276,26 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         self.controposble_ops = observation["role_and_grouping_info"][self.seat][
             "operators"
         ]
-        # communications = observation["communication"]
 
-        # # get the detected state
-        # units = observation["operators"]
-        # detected_state = self.get_detected_state(observation)
         # get the target first.
         self.distinguish_saidao()
-        # update the actions
-        if model == "guize":
-            self.Gostep_abstract_state()
-        elif model =="RL":
-            pass
+
         # the real tactics in step*() function.
         # self.step0()
-
-        self.step_cross_fire()
-
-        # self.step_defend()
-
-        # # update the actions
-        # self.Gostep_abstract_state()
+        if self.env_name=="cross_fire":
+            # update the actions
+            if model == "guize":
+                self.Gostep_abstract_state()
+            elif model =="RL":
+                pass
+            self.step_cross_fire()
+        elif self.env_name=="scout":
+            self.act = self.step_scout()
+        elif self.env_name=="defend":
+            self.Gostep_abstract_state()
+            self.step_defend()
+        else:
+            raise Exception("G!")
 
         return self.act
 
@@ -2362,12 +2374,23 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             self.group_A(UAV_units,target_pos)
         return 
 
-
     def step_scout(self):
         # unfinished yet.
-        
-        print("step_scout: unfinished yet.")
+        self.ob = self.observation
+        self.update_time()
+        self.update_tasks()
+        if not self.tasks:
+            return []  # 如果没有任务则待命
+        self.update_all_units()
+        self.update_valid_actions()
 
+        self.actions = []  # 将要返回的动作容器
+        self.prefer_shoot()  # 优先选择射击动作
+
+        for task in self.tasks:  # 遍历每个分配给本席位任务
+            self.task_executors[task["type"]].execute(task, self)
+        return self.actions   
+    
     def step_defend(self):
         # unfinished yet.
         
@@ -2401,3 +2424,85 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 self.set_open_fire(unit)
 
         print("step_defend: unfinished yet.")
+     
+    def update_time(self):
+        cur_step = self.ob["time"]["cur_step"]
+        stage = self.ob["time"]["stage"]
+        self.time = Time(cur_step, stage)
+
+    def update_tasks(self):
+        self.tasks = []
+        for task in self.ob["communication"]:
+            if (
+                task["seat"] == self.seat
+                and task["start_time"] <= self.time.cur_step < task["end_time"]
+                and task["type"] in self.task_executors
+            ):  # 分配给本席位的、有效时间内的、能执行的任务
+                self.tasks.append(task)
+
+    def update_all_units(self):
+        self.friendly = {}  # 我方非乘员算子，包括属于我方其他席位的算子
+        self.enemy = {}  # 可观察到的敌方算子
+        self.on_board = {}  # 我方乘员算子，因为在车上，所以无法直接操纵
+        self.owned = {}  # 属于当前席位的算子
+        self.valid_units = {}  # 当前能够动作的算子
+        owned_set = set(self.ob["role_and_grouping_info"][self.seat]["operators"])
+        valid_set = set(self.ob["valid_actions"])
+        for unit in self.ob["operators"]:
+            if unit["color"] == self.color:
+                self.friendly[unit["obj_id"]] = unit
+                if unit["obj_id"] in owned_set:
+                    self.owned[unit["obj_id"]] = unit
+                    if unit["obj_id"] in valid_set:
+                        self.valid_units[unit["obj_id"]] = unit
+            else:
+                self.enemy[unit["obj_id"]] = unit
+        for unit in self.ob["passengers"]:
+            self.on_board[unit["obj_id"]] = unit
+            if unit["obj_id"] in owned_set:
+                self.owned[unit["obj_id"]] = unit
+
+    def update_valid_actions(self):
+        self.valid_actions = {}
+        self.flag_act = {}  # 记录已经生成了动作的算子，避免一个算子同一步执行多个动作
+        for obj_id in self.valid_units:
+            self.valid_actions[obj_id] = self.ob["valid_actions"][obj_id]
+            self.flag_act[obj_id] = False
+
+    def gen_move_route(self, unit, destination):
+        """计算指定算子按照适当方式机动到目的地的最短路径"""
+        unit_type = unit["type"]
+        if unit_type == BopType.Vehicle:
+            if unit["move_state"] == MoveType.March:
+                move_type = MoveType.March
+            else:
+                move_type = MoveType.Maneuver
+        elif unit_type == BopType.Infantry:
+            move_type = MoveType.Walk
+        else:
+            move_type = MoveType.Fly
+        return self.map.gen_move_route(unit["cur_hex"], destination, move_type)
+    
+    def prefer_shoot(self):
+        for obj_id, val_act in self.valid_actions.items():
+            if self.flag_act[obj_id]:
+                continue
+            available_targets = val_act.get(ActType.Shoot, None)
+            if available_targets:
+                best = max(available_targets, key=lambda x: x["attack_level"])
+                act = self.act_gen.shoot(
+                    obj_id, best["target_obj_id"], best["weapon_id"]
+                )
+                self.actions.append(act)
+                self.flag_act[obj_id] = True
+
+@dataclass
+class Time:
+    """维护当前推演时间"""
+
+    cur_step: int
+    stage: int
+
+    @property
+    def is_deployment_stage(self):
+        return self.stage == 1

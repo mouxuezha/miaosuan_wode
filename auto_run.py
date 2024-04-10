@@ -39,9 +39,10 @@ class auto_run():
 
     def __init_crossfire(self):
         # from ai.agent import Agent
-        from agent_guize import agent_guize
+        # from agent_guize import agent_guize
+        from agent import Agent
         self.env = CrossFireEnv()
-        self.agent = agent_guize()
+        self.agent = Agent()
         self.begin = time.time()
         # # varialbe to build replay
         # self.all_states = []
