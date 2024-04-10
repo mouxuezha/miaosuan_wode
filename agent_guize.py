@@ -2170,6 +2170,37 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         
         return flag_finished
 
+    def distinguish_saidao(self):
+        # 区分当前是哪个赛道，然后把相应需要的全局变量和初始化做了。
+        observation = self.status
+        communications = observation["communication"] 
+        flag_cross_fire = False      
+        flag_defend = False
+        flag_scout = False
+
+        for command in communications:
+            if command["type"] in [210] :
+                # 说明是cross fire 赛道
+                flag_cross_fire = True
+            if command["type"] in [209] :
+                # 说明是Scout 赛道
+                flag_scout = True
+            if command["type"] in [208] :
+                # 说明是Defend 赛道
+                flag_defend = True
+        
+        # 然后搞一下相应的初始化。
+        if flag_cross_fire:
+            self.get_target_cross_fire()
+        elif flag_scout:
+            self.get_target_cross_fire()
+        elif flag_defend:
+            self.get_target_defend()
+        else:
+            raise Exception("invalid saidao, G")
+
+                        
+
     def get_target_cross_fire(self):
         # call one time for one game.
         observation = self.status
