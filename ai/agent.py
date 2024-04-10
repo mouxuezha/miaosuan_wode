@@ -2269,9 +2269,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.num = self.num + 1 
         if self.num == 1:
             print("Debug, moving")
-        else:
-            if self.num%100==99:
-                print("Debug, self.num = "+str(self.num))
+        # else:
+        #     if self.num%100==99:
+        #         print("Debug, self.num = "+str(self.num))
         self.observation = observation
         self.status = observation # so laji but fangbian.
 
