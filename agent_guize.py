@@ -467,22 +467,26 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
 
         # 这里其实有点问题，逻辑应该是探测到的敌方单位就再也不删除了，有状态更新就更新，没有就保持不变。
-        detected_state_new = []
+        detected_state_new = copy.deepcopy(self.detected_state)
         
         # 去重和更新。
-        for unit_old in self.detected_state:
+        # for unit_old in self.detected_state:
+        for unit in detected_state_single:
             flag_updated = False
-            for unit in detected_state_single:
+            # for unit in detected_state_single:
+            for unit_old in self.detected_state:
                 if unit_old["obj_id"] == unit["obj_id"]:
                     # 说明这个是已经探索过的了，那就用新的
                     detected_state_new.append(unit)
                     flag_updated == True
                     break
             if flag_updated == False:
-                # 说明是探测过的都刷了一遍了都没有刷到敌人，那就用之前的去更新。
+                # 说明是new detected.
                 # 这个会高估威胁，打爆了的敌人会继续存在于态势中。
                 # 但是crossfire里面真能打爆敌人的场景也不是很多，所以也就罢了。
-                detected_state_new.append(unit_old)
+                detected_state_new.append(unit)
+            
+
                                 
         self.detected_state = detected_state_new
         # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
@@ -1982,13 +1986,14 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             except:
                 xy_candidate = xy_center + 15*n_xy_list[1]
                 pos_candidate = self._xy_to_hex(xy_candidate)    
-
-            return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
+        else:
+            pos_candidate = target_pos
+        return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
                 
     def list_A(self, units, target_pos, model="normal"):
         # “选取部队横越地图”，实现一个宏观层面的绕行机制。
         # target_pos_list作为类的一个属性在这里面自己维护了。
-        if self.num<400 and self.num%20==2: # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
+        if (self.num<400 and self.num%20==2) or not("self.target_pos_list" in locals()): # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
             target_pos_list = self.get_pos_list_A(units, target_pos)
             self.target_pos_list = target_pos_list 
         else:
@@ -1999,6 +2004,9 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             for i in range(len(target_pos_list)-1):
                 target_pos_single = target_pos_list[i]
                 pos_single = self.get_pos(unit)
+                if pos_single==target_pos_list[-1]:
+                    # arrived
+                    break
                 if pos_single==target_pos_single:
                     # 说明到了这个点了，那就去下一个点。
                     target_pos = target_pos_list[i+1]
@@ -2332,7 +2340,8 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         if jieju_flag == True and self.num<800:
             self.group_A(others_units,target_pos)
         if jieju_flag2 == True and self.num<800:
-            self.group_A(IFV_units,target_pos)
+            # self.group_A(IFV_units,target_pos)
+            self.list_A(IFV_units,target_pos)
 
         # if arrived, then juhe.
         if self.num>800:
