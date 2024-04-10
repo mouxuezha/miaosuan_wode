@@ -14,8 +14,8 @@ import sys
 import json
 import copy,random
 import numpy as np
-from tools import *
-from base_agent import BaseAgent
+from .tools import *
+from .base_agent import BaseAgent
 
 class BopType:
     Infantry, Vehicle, Aircraft = range(1, 4)
@@ -2259,6 +2259,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             defend_pos.append(defend_pos_single)
         
         return defend_pos
+
+    def get_target_scout(self):
+        pass
 
     # then step
     def step(self, observation: dict, model="guize"):

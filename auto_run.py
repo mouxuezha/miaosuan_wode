@@ -32,7 +32,7 @@ class auto_run():
         pass
 
     def __init_defend(self):
-        from agent_guize import agent_guize
+        from ai.agent_guize import agent_guize
         self.env = DefendEnv(3,5,1)
         self.agent = agent_guize()
         self.begin = time.time()   
@@ -40,7 +40,7 @@ class auto_run():
     def __init_crossfire(self):
         # from ai.agent import Agent
         # from agent_guize import agent_guize
-        from agent import Agent
+        from ai.agent import Agent
         self.env = CrossFireEnv()
         self.agent = Agent()
         self.begin = time.time()
@@ -66,7 +66,11 @@ class auto_run():
         #     }
         # )
 
-
+    def __init_scout(self):
+        from ai.agent import Agent
+        self.env = ScoutEnv()
+        self.agent = Agent()
+        self.begin = time.time()
 
     def run_single(self):
         # varialbe to build replay
@@ -120,6 +124,7 @@ def save_replay(replay_name, data):
 if __name__ == "__main__":
     for i in range(5):
         # shishi = auto_run(env_name="defend")
-        shishi = auto_run(env_name="crossfire")
+        # shishi = auto_run(env_name="crossfire")
+        shishi = auto_run(env_name="scout")
         shishi.run_single()
 
