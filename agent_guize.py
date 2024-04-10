@@ -662,6 +662,15 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         return pos_ave
 
     def distance(self, target_pos, attacker_pos):
+        if type(target_pos) == int:
+            target_pos = target_pos
+        else:
+            target_pos = target_pos["cur_hex"]
+        if type(attacker_pos) == int:
+            attacker_pos = attacker_pos
+        else:
+            attacker_pos = attacker_pos["cur_hex"]       
+
         jvli = self.map.get_distance(target_pos, attacker_pos)
         # print("distance: unfinished yet")
         return jvli
@@ -1860,7 +1869,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             # A了A了，都这时候了还要个毛的脑子，直接头铁
         pass
 
-    def group_A(self, units,target_pos,model='normal'):
+    def group_A(self, units,target_pos, model='normal'):
         print("group_A: unfinished yet")
         for unit in units:
             self.set_move_and_attack(unit,target_pos,model=model)
@@ -1906,6 +1915,23 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
             target_pos_single = array_sorted[index_pos,0]
             self.set_move_and_attack(unit,target_pos_single)    
     
+    def group_A2(self,units,units_VIP, model="normal"):
+        # 这个以低成本实现一个跟随的。units跟随units_VIP里面距离最近的一个，跟随的逻辑是直接瞄着其当前位置就去了。
+        for unit in units:
+            if len(units_VIP)==0:
+                # 那就是被跟随的已经被杀完了，那就无所谓了
+                self.set_move_and_attack(unit,self.target_pos,model="force")
+            else:
+                # 找那一堆里面距离最近的来跟随。
+                jvli_list = [] 
+                for i in range(len(units_VIP)):
+                    jvli_single = self.distance(unit,units_VIP[i])  
+                    jvli_list.append(jvli_single)
+                jvli_min = min(jvli_list)
+                index_min = jvli_list.index(jvli_min)
+                VIP_pos_single = units_VIP[i]["cur_index"]
+                self.set_move_and_attack(unit,VIP_pos_single,model="force")
+
     def get_pos_list_A(self, units, target_pos):
         # 上来先维护target_pos_list,包括判断威胁等级看是不是有必要绕路。
         pos_ave = self.get_pos_average(units)
@@ -1963,8 +1989,7 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
         else:
             pos_candidate = target_pos
         return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
-              
-        
+                
     def list_A(self, units, target_pos, model="normal"):
         # “选取部队横越地图”，实现一个宏观层面的绕行机制。
         # target_pos_list作为类的一个属性在这里面自己维护了。
@@ -1990,7 +2015,6 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                     # 没到的话就无事发生。
                     pass
                 
-
     def final_juhe(self, units):
         flag_arrived, units_arrived = self.is_arrive(units,self.target_pos,tolerance = 0 )
 
@@ -2025,7 +2049,6 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                         break
 
         return 
-
 
     def UAV_patrol(self, target_pos):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
@@ -2154,6 +2177,37 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
                 flag_finished = flag_finished and False
         
         return flag_finished
+
+    def distinguish_saidao(self):
+        # 区分当前是哪个赛道，然后把相应需要的全局变量和初始化做了。
+        observation = self.status
+        communications = observation["communication"] 
+        flag_cross_fire = False      
+        flag_defend = False
+        flag_scout = False
+
+        for command in communications:
+            if command["type"] in [210] :
+                # 说明是cross fire 赛道
+                flag_cross_fire = True
+            if command["type"] in [209] :
+                # 说明是Scout 赛道
+                flag_scout = True
+            if command["type"] in [208] :
+                # 说明是Defend 赛道
+                flag_defend = True
+        
+        # 然后搞一下相应的初始化。
+        if flag_cross_fire:
+            self.get_target_cross_fire()
+        elif flag_scout:
+            self.get_target_cross_fire()
+        elif flag_defend:
+            self.get_target_defend()
+        else:
+            raise Exception("invalid saidao, G")
+
+                        
 
     def get_target_cross_fire(self):
         # call one time for one game.
