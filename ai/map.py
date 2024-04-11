@@ -1,6 +1,11 @@
 import heapq
 import random
+from .const import BopType, CondType
 
+ob_range =[[10, 25, 1],
+           [10, 25, 1],
+           [2, 2, -1]]  # 依次为步兵、车辆、无人机的无地形遮蔽可观察距离
+max_shoot_range = [10, 20, 0]  # 依次为步兵、车辆、无人机的最大射程
 
 class Map:
     def __init__(self, basic_data, cost_data, see_data):
@@ -199,3 +204,59 @@ class Map:
                     if (dis >= distance_start) and (dis <= distance_end):
                         gridset.add(pos)
         return gridset
+    
+    def get_see_mode(self, unit1_type, unit2_type):
+        """
+        Get the see mode of `unit1` observing `unit2`.
+        :return: int
+        """
+        if unit1_type == BopType.Aircraft:
+            if unit2_type == BopType.Aircraft:
+                return 1 # 低空对低空
+            else:
+                return 2 # 低空对地
+        elif unit2_type == BopType.Aircraft:
+            return -1 # 地对低空不可见
+        else:
+            return 0 # 地对地
+    
+    def can_observe(self, pos1, pos2, unit1_type, unit2_type):
+        """
+        Check if `pos1` can observe `pos2`.
+        :return: bool
+        """
+        cond2 = self.basic[pos2 // 100][pos2 % 100]["cond"]
+        unit1_ob_range = ob_range[unit1_type-1][unit2_type-1]
+        if cond2 in [CondType.Jungle, CondType.City]:
+            unit1_ob_range /= 2
+        mode = self.get_see_mode(unit1_type, unit2_type)
+        if self.can_see(pos1, pos2, mode) and \
+            self.get_distance(pos1, pos2) <= unit1_ob_range:
+            return True
+        return False
+    
+    def can_shoot(self, pos1, pos2, unit1_type, unit2_type):
+        """
+        Check if `pos1` can shoot `pos2` with given `mode`.
+        :return: bool
+        """
+        if not self.can_observe(pos1, pos2, unit1_type, unit2_type):
+            return False
+        if self.get_distance(pos1, pos2) <= max_shoot_range[unit1_type-1]:
+            return True
+  
+    def get_ob_area(self, center: int, unit_type: int, exclude_area=None):
+        """
+        Get the observation area of a unit.
+        :return: set
+        """
+        # TODO: 待观察算子暂时只考虑车
+        ob_area = []
+        radius = ob_range[unit_type-1][BopType.Vehicle-1]
+        max_area = self.get_grid_distance(center, 0, radius)
+        if exclude_area:
+            max_area -= exclude_area
+        for h in list(max_area):
+            if self.can_observe(center, h, unit_type, BopType.Vehicle):
+                ob_area.append(h)
+        return set(ob_area)
