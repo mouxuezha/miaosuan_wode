@@ -1491,6 +1491,7 @@ class BaseAgent(ABC):
             # # 然后移动过去。不要move and attack了，直接移过去。
             # self._move_action(attacker_ID,target_pos_random)
             self.set_move_and_attack(attacker_ID,target_pos_random,model="force")
+            self.abstract_state[attacker_ID]["flag_jieju"]=True
         else:
             # 那就是还能接着解聚。
             pass
