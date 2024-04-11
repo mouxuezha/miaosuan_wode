@@ -64,3 +64,12 @@ class UnitSubType:
     # 皮卡车18
     # 天基侦察算子19
     # 人员隐蔽工事20
+
+
+class CondType:
+    Plain = 0       # 开阔地
+    Jungle = 1      # 丛林
+    City = 2        # 居民地
+    Soft = 3        # 松软地
+    River = 4       # 河流
+    Obstacle = 5    # 路障
