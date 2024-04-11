@@ -1,3 +1,5 @@
 __pycache__
-
+.vscode
 logs
+replays
+scout_output.txt
