@@ -52,6 +52,8 @@ def rollout(track_id):
     env.reset()
     cur_time = datetime.now().strftime("%Y%m%d-%H%M%S")
     replay_name = f"track_{track_id}_{cur_time}"
+    print(replay_name)
+    print("---------------------------------")
     save_replay(replay_name, trajectories)
 
 
