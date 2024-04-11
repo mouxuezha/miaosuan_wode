@@ -230,19 +230,20 @@ class Map:
         if cond2 in [CondType.Jungle, CondType.City]:
             unit1_ob_range /= 2
         mode = self.get_see_mode(unit1_type, unit2_type)
-        if self.can_see(pos1, pos2, mode) and \
-            self.get_distance(pos1, pos2) <= unit1_ob_range:
+        
+        if self.get_distance(pos1, pos2) > unit1_ob_range:
+            return False
+        elif self.can_see(pos1, pos2, mode):
             return True
-        return False
     
     def can_shoot(self, pos1, pos2, unit1_type, unit2_type):
         """
         Check if `pos1` can shoot `pos2` with given `mode`.
         :return: bool
         """
-        if not self.can_observe(pos1, pos2, unit1_type, unit2_type):
+        if self.get_distance(pos1, pos2) > max_shoot_range[unit1_type-1]:
             return False
-        if self.get_distance(pos1, pos2) <= max_shoot_range[unit1_type-1]:
+        elif self.can_observe(pos1, pos2, unit1_type, unit2_type):
             return True
   
     def get_ob_area(self, center: int, unit_type: int, exclude_area=None):
@@ -260,3 +261,20 @@ class Map:
             if self.can_observe(center, h, unit_type, BopType.Vehicle):
                 ob_area.append(h)
         return set(ob_area)
+    
+    def get_shoot_area(self, center:int, unit_type:int, exclude_area=None):
+        """
+        Get the shoot area of a unit.
+        :return: set
+        """
+        st_area = []
+        radius = max_shoot_range[unit_type-1]
+        max_area = self.get_grid_distance(center, 0, radius)
+        # 其实还没想好要这个干嘛
+        if exclude_area:
+            max_area -= exclude_area
+        for h in list(max_area):
+            # 前面已经用射程限制过范围了，能观察到肯定能打
+            if self.can_observe(center, h, unit_type, BopType.Vehicle):
+                st_area.append(h)
+        return set(st_area)

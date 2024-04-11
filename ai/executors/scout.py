@@ -1,7 +1,8 @@
 import random
 import numpy as np
+import heapq
 
-from ..const import ActType, BopType, CondType
+from ..const import ActType, BopType, CondType, MoveType
 
 # 六边形网格的方向，从右开始逆时针，根据奇偶行数分两种情况
 directions = [
@@ -99,6 +100,20 @@ def get_direction(start, end):
         return -1
 
 
+def decide_move_type(unit):
+    unit_type = unit["type"]
+    if unit_type == BopType.Vehicle:
+        if unit["move_state"] == MoveType.March:
+            move_type = MoveType.March
+        else:
+            move_type = MoveType.Maneuver
+    elif unit_type == BopType.Infantry:
+        move_type = MoveType.Walk
+    else:
+        move_type = MoveType.Fly
+    return move_type
+
+
 class ScoutExecutor:
     """执行侦察任务的策略"""
 
@@ -108,9 +123,11 @@ class ScoutExecutor:
         self.unscouted = set()
         self.air_num = 0
         self.air_traj = {}
-        self.enemy_pos = {}  # {hex: [obj_id, cond]}
+        self.enemy_pos = {}  # {obj_id: hex}
         self.units = {}  # {obj_id: [last, cur]}
         self.suspected = set()
+        self.repeat_map = {} # 用于附加寻路代价，更倾向于探索未知区域
+        self.threat_map = {} # 用于寻路代价值，更倾向于避开敌人射程
 
     def setup(self, task, agent):
         air_start = []
@@ -128,6 +145,8 @@ class ScoutExecutor:
         self.unscouted = set(self.area.copy())
         self.area2xy()
         self.allocate_traj(rough_start, task["hex"])
+        self.repeat_map = {key: 0 for key in self.area}
+        self.threat_map = {key: 0 for key in self.area}
 
     def area2xy(self):
         """将侦察区域转换为直角坐标"""
@@ -189,8 +208,14 @@ class ScoutExecutor:
 
     def update_unscouted(self, agent, cur_hex, unit_type):
         scouted = set(self.area) - self.unscouted
-        new_ob = agent.map.get_ob_area(cur_hex, unit_type, scouted)
+        new_ob = agent.map.get_ob_area(cur_hex, unit_type, scouted) & set(self.area)
         self.unscouted -= new_ob
+        
+        # 顺道把奖励地图更新了
+        for h in new_ob:
+            self.repeat_map[h] += 0.2
+        if cur_hex in self.area:
+            self.repeat_map[cur_hex] += 0.4
         
         # 顺道把可疑区域一块更新了
         last_suspect_num = len(self.suspected)
@@ -242,7 +267,7 @@ class ScoutExecutor:
         for missed_unit in diff:
             area_last = self.can_you_shoot_me(agent, self.units[missed_unit][0])
             area_cur = self.can_you_shoot_me(agent, self.units[missed_unit][1])
-            tmp_suspect = area_cur - area_last & self.unscouted - set(self.enemy_pos.keys())
+            tmp_suspect = area_cur - area_last & self.unscouted - set(self.enemy_pos.values())
         # tmp_suspect = area_cur - area_last & self.unscouted
             if len(self.suspected) == 0:
                 self.suspected = tmp_suspect
@@ -283,7 +308,76 @@ class ScoutExecutor:
             self.air_traj[dist[0][0]].insert(0, new_traj_point)
             # self.suspected.remove(new_traj_point)
             print(f"***reallocate obj: {dist[0][0]}, new point: {new_traj_point}***")
+   
+    def my_a_star(self, agent, unit, end):
+        move_type = decide_move_type(unit)
+        begin = unit["cur_hex"]
+        
+        frontier = [(0, random.random(), begin)]
+        cost_so_far = {begin: 0}
+        came_from = {begin: None}
+        
+        def a_star_search():
+            while frontier:
+                _, _, cur = heapq.heappop(frontier)
+                if cur == end:
+                    break
+                row, col = divmod(cur, 100)
+                for neigh, edge_cost in agent.map.cost[move_type][row][col].items():
+                    neigh_cost = cost_so_far[cur] + edge_cost
+                    if neigh in self.area:
+                        if unit["type"] == BopType.Vehicle:
+                            neigh_cost += self.threat_map[neigh]
+                        neigh_cost += self.repeat_map[neigh]
+                    else:
+                        neigh_cost += 0.5
+                    if neigh not in cost_so_far or neigh_cost < cost_so_far[neigh]:
+                        cost_so_far[neigh] = neigh_cost
+                        came_from[neigh] = cur
+                        heuristic = agent.map.get_distance(neigh, end)
+                        heapq.heappush(
+                            frontier, (neigh_cost + heuristic, random.random(), neigh)
+                        )
+        
+        def reconstruct_path():
+            path = []
+            if end in came_from:
+                cur = end
+                while cur != begin:
+                    path.append(cur)
+                    cur = came_from[cur]
+                path.reverse()
+            return path
 
+        a_star_search()
+        return reconstruct_path()
+
+    def check_enemy(self, agent):
+        cur_enemy = set(agent.enemy.keys())
+        old_enemy = set(self.enemy_pos.keys())
+        if len(cur_enemy) > len(old_enemy):
+            new_enemy = cur_enemy - old_enemy
+            for obj_id in new_enemy:
+                enemy_hex = agent.enemy[obj_id]["cur_hex"]
+                self.enemy_pos[obj_id] = enemy_hex
+                self.update_enemy_threat_area(agent, enemy_hex, 1)
+        elif len(cur_enemy) < len(old_enemy):
+            lost_enemy = old_enemy - cur_enemy
+            for obj_id in lost_enemy:
+                enemy_hex = self.enemy_pos.pop(obj_id)
+                self.update_enemy_threat_area(agent, enemy_hex, -1)
+
+    def update_enemy_threat_area(self, agent, enemy_hex, coeff=1):
+        """
+        根据敌人所处地形更新威胁地图，更新值是拍脑袋定的
+        """
+        st_area = agent.map.get_shoot_area(enemy_hex, BopType.Vehicle) & set(self.area)
+        for h in st_area:
+            if not agent.map.can_observe(h, enemy_hex, BopType.Vehicle, BopType.Vehicle):
+                self.threat_map[h] += 0.4 * coeff
+            else:
+                self.threat_map[h] += 0.2 * coeff
+    
     def execute(self, task, agent):
         """
         侦察执行逻辑
@@ -294,13 +388,9 @@ class ScoutExecutor:
         if not self.area:
             print("ScoutExecutor: area is empty")
             return  # 侦察区域不能为空
-        if len(agent.enemy) > 0:
-            for obj_id, unit in agent.enemy.items():
-                enemy_hex = unit["cur_hex"]
-                if enemy_hex not in self.enemy_pos.keys():
-                    x, y = hex2rc(enemy_hex)
-                    self.enemy_pos[enemy_hex] = [obj_id, agent.map.basic[x][y]["cond"]]
-
+        
+        self.check_enemy(agent)
+        
         if len(agent.owned) < len(self.units):
             cur_units = set(agent.owned.keys())
             self.guess_enemy(cur_units, agent)
@@ -351,7 +441,8 @@ class ScoutExecutor:
             else:
                 destination = vehicle_scout()
             
-            route = agent.gen_move_route(unit, int(destination))
+            # route = agent.gen_move_route(unit, int(destination))
+            route = self.my_a_star(agent, unit, int(destination))
             if route:
                 agent.actions.append(agent.act_gen.move(obj_id, route))
                 agent.flag_act[obj_id] = True
