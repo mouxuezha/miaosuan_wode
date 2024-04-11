@@ -190,11 +190,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             enemy_distance = self.map.get_distance(enemy_pos, pos_ave)
 
             dot_single = np.dot(vector_single, vector_xy) / np.linalg.norm(vector_xy+0.001) / np.linalg.norm(vector_single+0.001)
-            enemy_infantry_dot_danger.append(dot_single)
+            
             
             if enemy_distance<17 and dot_single>0.80:
                 # 这两个阈值都是从案例里抠出来的。
                 enemy_infantry_units_danger.append(enemy_infantry_unit)
+                enemy_infantry_dot_danger.append(dot_single)
         
         # 至此，就筛出了究极高威胁的敌方步兵的位置。然后是根据这些位置确定绕路的方向，以target_pos_list的形式放在list中。
         if len(enemy_infantry_units_danger)>0:
@@ -246,7 +247,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     pos_candidate = self._xy_to_hex(xy_candidate)
                 except:
                     # if it doesn't work, then use method1
-                    pos_candidate =  method1(enemy_infantry_dot_danger)             
+                    pos_candidate =  method1(enemy_infantry_dot_danger) 
+            else:
+                pos_candidate =  method1(enemy_infantry_units_danger)            
         else:
             pos_candidate = target_pos
         return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
@@ -436,7 +439,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         
         flag_finished = True 
         for unit in units:
-
             try:
                 abstract_state_single = self.abstract_state[unit["obj_id"]]
             except:
@@ -446,10 +448,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             if "abstract_state" in abstract_state_single:
                 if abstract_state_single["abstract_state"] == "jieju":
                     flag_finished and False
-                pass 
+                if abstract_state_single["abstract_state"] == "jieju":
+                    if "flag_jieju" in abstract_state_single:
+                        flag_finished and False
+                pass
             else:
                 # no abstract for it.
                 pass
+
             if len(self._check_actions(unit["obj_id"], model="jieju"))==0 and unit["forking"]==0 and unit["blood"]==1 :
                 # not forking, can not fork anymore, so the forking process finished.
                 flag_finished = flag_finished and True
@@ -465,33 +471,33 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         flag_cross_fire = False      
         flag_defend = False
         flag_scout = False
-
-        for command in communications:
-            if command["type"] in [210] :
-                # 说明是cross fire 赛道
-                flag_cross_fire = True
-            if command["type"] in [209] :
-                # 说明是Scout 赛道
-                flag_scout = True
-            if command["type"] in [208] :
-                # 说明是Defend 赛道
-                flag_defend = True
-        
-        # 然后搞一下相应的初始化。
-        if flag_cross_fire:
-            self.env_name = "cross_fire" 
-            if self.num <2:
-                target_pos = self.get_target_cross_fire()
+        if self.num <2:
+            for command in communications:
+                if command["type"] in [210] :
+                    # 说明是cross fire 赛道
+                    flag_cross_fire = True
+                if command["type"] in [209] :
+                    # 说明是Scout 赛道
+                    flag_scout = True
+                if command["type"] in [208] :
+                    # 说明是Defend 赛道
+                    flag_defend = True
+            
+            # 然后搞一下相应的初始化。
+            if flag_cross_fire:
+                self.env_name = "cross_fire" 
+                if self.num <2:
+                    target_pos = self.get_target_cross_fire()
+                else:
+                    target_pos = self.target_pos
+            elif flag_scout:
+                self.env_name = "scout" 
+                self.get_target_scout()
+            elif flag_defend:
+                self.env_name = "defend" 
+                self.get_target_defend()
             else:
-                target_pos = self.target_pos
-        elif flag_scout:
-            self.env_name = "scout" 
-            self.get_target_scout()
-        elif flag_defend:
-            self.env_name = "defend" 
-            self.get_target_defend()
-        else:
-            raise Exception("invalid saidao, G")
+                raise Exception("invalid saidao, G")
 
     def get_target_cross_fire(self):
         # call one time for one game.
@@ -557,7 +563,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 self.Gostep_abstract_state()
             elif model =="RL":
                 pass
-            self.step_cross_fire()
+            # self.step_cross_fire()
+            self.step_cross_fire_test()
         elif self.env_name=="scout":
             self.act = self.step_scout()
         elif self.env_name=="defend":
@@ -651,6 +658,75 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # kaibai is fine.
             self.group_A(UAV_units,target_pos)
         return 
+
+    def step_cross_fire_test(self):
+        # this is to test group_A2.
+        target_pos = self.target_pos
+        units=self.status["operators"]           
+        IFV_units = self.get_IFV_units()
+        infantry_units = self.get_infantry_units()
+        UAV_units = self.get_UAV_units()
+        tank_units = self.get_tank_units()
+        # 这个是获取别的units用来准备一开始就解聚
+        # others_units = list(set(units) - set(IFV_units) - set(infantry_units) - set(UAV_units))
+        others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+
+        flag_on,flag_off = self.IFV_transport_check()
+        jieju_flag2 = self.jieju_check(model="part", units=IFV_units)
+
+        if flag_on==False:
+            # 如果刚开始且没上车，那就先上车
+            self.IFV_transport(model="on")
+        elif flag_on==True and self.num<800:
+            # self.IFV_transport(model="off") # this is for test
+            if jieju_flag2==False:
+                for unit in IFV_units:
+                    self.set_jieju(unit)
+
+        jieju_flag = self.jieju_check(model="part", units=others_units)
+        # if self.num<500 and jieju_flag==False:
+        if jieju_flag==False and self.num<800:
+            # 那就是没解聚完，那就继续解聚。
+            for unit in others_units:
+                self.set_jieju(unit)
+        
+        # F2A.
+        # if jieju_flag == True and self.num<800:
+        if jieju_flag == True and jieju_flag2==True:
+            if self.num < 200:
+                model="normal"
+            else:
+                model="force"
+            # self.group_A(others_units,target_pos,model=model)
+            self.group_A2(others_units,IFV_units)
+        elif self.num>300:
+            # self.group_A(others_units,target_pos,model="force")
+            self.group_A2(others_units,IFV_units)
+
+        if jieju_flag2 == True:
+            # self.group_A(IFV_units,target_pos,model="force")
+            self.list_A(IFV_units,target_pos)
+        elif self.num>300:
+            self.list_A(IFV_units,target_pos)
+
+        # if arrived, then juhe.
+        if self.num>800:
+            self.final_juhe(tank_units)
+            self.final_juhe(IFV_units)
+
+        # if self.num>1000:
+        #     # 最后一波了，直接F2A了
+        #     self.F2A(target_pos)
+        #     pass # disabled for tiaoshi
+        
+        if (self.num % 100==0) and (self.num>-200) and (self.num<2201):
+            # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
+            # deal with UAV.
+            # self.UAV_patrol(target_pos)
+            # kaibai is fine.
+            self.group_A(UAV_units,target_pos)
+        return 
+
 
     def step_scout(self):
         # unfinished yet.
