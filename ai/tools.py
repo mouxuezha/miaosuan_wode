@@ -112,6 +112,40 @@ def get_pos_average(units):
         pos_ave = round(pos_sum / geshu)
         return pos_ave
 
+
+class BopType:
+    Infantry, Vehicle, Aircraft = range(1, 4)
+
+
+class ActionType:
+    (
+        Move,
+        Shoot,
+        GetOn,
+        GetOff,
+        Occupy,
+        ChangeState,
+        RemoveKeep,
+        JMPlan,
+        GuideShoot,
+        StopMove,
+        WeaponLock,
+        WeaponUnFold,
+        CancelJMPlan,
+        Fork,
+        Union,
+        ChangeAltitude,
+        ActivateRadar,
+        EnterFort,
+        ExitFort,
+        LayMine,
+    ) = range(1, 21)
+
+
+class MoveType:
+    Maneuver, March, Walk, Fly = range(4)
+
+
 if __name__ == "__main__":
     # these for tool test
     print("tools: testing")

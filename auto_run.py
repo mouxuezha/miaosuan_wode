@@ -27,8 +27,6 @@ class auto_run():
         else:
             raise Exception("auto_run: invalid env setting, G.")
         
-
-        
         pass
 
     def __init_defend(self):
@@ -124,7 +122,7 @@ def save_replay(replay_name, data):
 if __name__ == "__main__":
     for i in range(5):
         # shishi = auto_run(env_name="defend")
-        # shishi = auto_run(env_name="crossfire")
-        shishi = auto_run(env_name="scout")
+        shishi = auto_run(env_name="crossfire")
+        # shishi = auto_run(env_name="scout")
         shishi.run_single()
 
