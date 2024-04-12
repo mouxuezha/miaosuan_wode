@@ -76,27 +76,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.map_data = None
 
         self.num = 0 
-
-    def find_pos_vector(self,pos_here, pos_list,vector_xy):
-        # 从pos_list中找到“从pos_here到其中的点”的向量方向最符合vector_xy的，然后返回相应的pos四位数，用于后续的move。
-        # 这个函数得好好写写，因为会高频调用。
-        # 最符合方向，那就是归一化之后的内积最大嘛，先这么搞
-        xy_here = self._hex_to_xy(pos_here)
-        index = 0
-        index_selected = 0 
-        dot_max = -1.1
-        for pos_single in pos_list:
-            xy_single = self._hex_to_xy(pos_single)
-            vector_single = xy_single-xy_here
-            dot_single = np.dot(vector_single,vector_xy) / np.linalg.norm(vector_xy) / np.linalg.norm(vector_single)
-            # dot_single in [-1, 1], 所以肯定会有某个点被选出来的
-            if dot_single>dot_max:
-                # 那就说明这个符合的更好
-                dot_max = dot_single
-                index_selected = index
-            index = index + 1 
-        return  pos_list[index_selected] # 返回值应该是一个四位的int，能拿去用的那种。
-    
+   
     # guize_functions xxh
     def F2A(self,target_pos):
         units = self.status["operators"]
@@ -247,24 +227,28 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     pos_candidate = self._xy_to_hex(xy_candidate)
                 except:
                     # if it doesn't work, then use method1
-                    pos_candidate =  method1(enemy_infantry_dot_danger) 
+                    pos_candidate =  method1(enemy_infantry_units_danger) 
             else:
                 pos_candidate =  method1(enemy_infantry_units_danger)            
         else:
             pos_candidate = target_pos
         return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
                 
-    def list_A(self, units, target_pos):
+    def list_A(self, units, target_pos, **kargs):
         # “选取部队横越地图”，实现一个宏观层面的绕行机制。
         if len(units) ==0:
             # unit lost, nothing happen.
             return 
-        # target_pos_list作为类的一个属性在这里面自己维护了。
-        if (self.num<400 and self.num%20==2) or not("self.target_pos_list" in locals()): # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
-            target_pos_list = self.get_pos_list_A(units, target_pos)
-            self.target_pos_list = target_pos_list 
+        if "target_pos_list" in kargs:
+            # this is for debug, basicly
+            target_pos_list = kargs["target_pos_list"]
         else:
-            target_pos_list = self.target_pos_list
+            # target_pos_list作为类的一个属性在这里面自己维护了。
+            if (self.num<400 and self.num%20==2) or not("self.target_pos_list" in locals()): # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
+                target_pos_list = self.get_pos_list_A(units, target_pos)
+                self.target_pos_list = target_pos_list 
+            else:
+                target_pos_list = self.target_pos_list
         
         for unit in units:
             # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
@@ -541,9 +525,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.num = self.num + 1 
         if self.num == 1:
             print("Debug, moving")
-        # else:
-        #     if self.num%100==99:
-        #         print("Debug, self.num = "+str(self.num))
+        else:
+            if self.num%100==99:
+                print("Debug, self.num = "+str(self.num))
         self.observation = observation
         self.status = observation # so laji but fangbian.
 
@@ -705,9 +689,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         if jieju_flag2 == True:
             # self.group_A(IFV_units,target_pos,model="force")
-            self.list_A(IFV_units,target_pos)
+            self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
         elif self.num>300:
-            self.list_A(IFV_units,target_pos)
+            self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
 
         # if arrived, then juhe.
         if self.num>800:
@@ -726,7 +710,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # kaibai is fine.
             self.group_A(UAV_units,target_pos)
         return 
-
 
     def step_scout(self):
         # unfinished yet.

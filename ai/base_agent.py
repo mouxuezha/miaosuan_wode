@@ -1011,7 +1011,10 @@ class BaseAgent(ABC):
                 source_single["delay"] = source_single["delay"] - 1 
                 if source_single["delay"]>=0:
                     threaten_source_list_type2.append(source_single)
-        
+            # if source_single["type"] == 0:
+            #     threaten_source_list_type2.append(source_single)
+        # 0:enemy, 1: jm_points, 2: unit lost, 
+
         # 然后清了，重新再开
         self.threaten_source_list = []   
 
@@ -1439,7 +1442,7 @@ class BaseAgent(ABC):
                     neighbor_field_single = self.threaten_field[neighbor_pos_single]
                 neighbor_field_list.append(neighbor_field_single)
 
-                if neighbor_field_single<5:
+                if neighbor_field_single<50:
                     # 选出一些比较安全的点。如果没有比较安全的点就只能用全部点了。
                     neighbor_pos_list_selected.append(neighbor_pos_single)
                     neighbor_field_list_selected.append(neighbor_field_single)
@@ -1762,6 +1765,28 @@ class BaseAgent(ABC):
             next_abstract_state = {}
         self.abstract_state[attacker_ID] = next_abstract_state
         pass
+
+    def find_pos_vector(self,pos_here, pos_list,vector_xy):
+        # 从pos_list中找到“从pos_here到其中的点”的向量方向最符合vector_xy的，然后返回相应的pos四位数，用于后续的move。
+        # 这个函数得好好写写，因为会高频调用。
+        # 最符合方向，那就是归一化之后的内积最大嘛，先这么搞
+        xy_here = self._hex_to_xy(pos_here)
+        index = 0
+        index_selected = 0 
+        dot_max = -1.1
+        for pos_single in pos_list:
+            xy_single = self._hex_to_xy(pos_single)
+            vector_single = xy_single-xy_here
+            dot_single = np.dot(vector_single,vector_xy) / np.linalg.norm(vector_xy) / np.linalg.norm(vector_single)
+            # dot_single in [-1, 1], 所以肯定会有某个点被选出来的
+            if dot_single>dot_max:
+                # 那就说明这个符合的更好
+                dot_max = dot_single
+                index_selected = index
+            index = index + 1 
+        return  pos_list[index_selected] # 返回值应该是一个四位的int，能拿去用的那种。
+ 
+
     # shanglin using these functions. 
     def update_time(self):
         cur_step = self.ob["time"]["cur_step"]
