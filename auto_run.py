@@ -28,6 +28,7 @@ class auto_run():
         else:
             raise Exception("auto_run: invalid env setting, G.")
         
+        self.__init_analyse()
         pass
 
     def __init_defend(self):
@@ -84,7 +85,11 @@ class auto_run():
 
     def run_single(self):
         # varialbe to build replay
+        self.begin = time.time()
+        
         self.all_states = []
+        if len(self.config_str)==0:
+            raise Exception("auto_run: config_str is empty, G. do not be lazy.")
 
         ai_user_name = 'myai'
         ai_user_id = 1
@@ -150,6 +155,7 @@ class auto_run():
         file_txt.write(f"return_ave: {self.return_ave}\n")
         file_txt.write(f"reward_list: {self.reward_list}\n")
         file_txt.write(f"return_list: {self.return_list}\n")
+        file_txt.write("\n\n\n")
         file_txt.close()
         pass
 
@@ -167,7 +173,9 @@ if __name__ == "__main__":
     # shishi = auto_run(env_name="defend")
     shishi = auto_run(env_name="crossfire")
     # shishi = auto_run(env_name="scout")
-    for i in range(20):
+
+    shishi.record_config("debug field, give infantry a large threat value, 300.")
+    for i in range(3):
         shishi.run_single()
     shishi.get_result_single(shishi.all_games)
 
