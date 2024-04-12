@@ -1104,7 +1104,8 @@ class BaseAgent(ABC):
             a2 = 1 
             if threaten_source["type"] == 0:
                 # 有敌方单位，就别去送了。
-                field_value = field_value + a1*3 / (a2 + jvli) # never touch the enemy. 
+                # field_value = field_value + a1*3 / (a2 + jvli) # never touch the enemy. 
+                field_value = field_value + a1*300 / (a2 + jvli) # never touch the enemy. 
             elif threaten_source["type"] == 1:
                 # 有炮火覆盖的地方，如果快开始爆炸了就别过去送了，绕一下。
                 if threaten_source["delay"] == 0:
@@ -1116,6 +1117,8 @@ class BaseAgent(ABC):
             elif threaten_source["type"] == -1:
                 # 有己方单位存活，认为那附近安全一点。负的威胁度
                 field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
+
+        #  TODO: using tongshi to modify the field further.
             
         return field_value
 
