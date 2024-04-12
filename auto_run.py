@@ -80,16 +80,12 @@ class auto_run():
         self.config_str = ""
         self.all_games = []
     
-    def record_config(self, config_str:str):
-        self.config_str = config_str
-
     def run_single(self):
         # varialbe to build replay
         self.begin = time.time()
-        
+
         self.all_states = []
-        if len(self.config_str)==0:
-            raise Exception("auto_run: config_str is empty, G. do not be lazy.")
+
 
         ai_user_name = 'myai'
         ai_user_id = 1
@@ -125,11 +121,27 @@ class auto_run():
 
         # save replay
         save_replay(self.begin, self.all_states)
-        self.all_games.append(self.all_states)
         return self.all_states
         # pass
-    
-    def get_result_single(self,all_games):
+
+class record_result():
+    def __init__(self):
+        self.reward_ave = 0 
+        self.return_ave = 0 
+        self.reward_list = [] 
+        self.return_list = [] 
+        self.config_str = ""
+        self.all_games = []
+
+    def record_config(self, config_str:str):
+        self.config_str = config_str
+
+    def get_result_single(self,all_states):
+        if len(self.config_str)==0:
+            raise Exception("auto_run: config_str is empty, G. do not be lazy.")
+        self.all_games.append(all_states)
+        
+    def get_result_all(self,all_games):
         # get result from one round
         geshu = len(all_games)
         for i in range(geshu):
@@ -169,13 +181,13 @@ def save_replay(replay_name, data):
 
 
 if __name__ == "__main__":
-    
-    # shishi = auto_run(env_name="defend")
-    shishi = auto_run(env_name="crossfire")
-    # shishi = auto_run(env_name="scout")
-
-    shishi.record_config("debug field, give infantry a large threat value, 300.")
-    for i in range(3):
-        shishi.run_single()
-    shishi.get_result_single(shishi.all_games)
+    jieguo = record_result()
+    jieguo.record_config("debug field, give infantry a large threat value, 300.")
+    for i in range(5):
+        # shishi = auto_run(env_name="defend")
+        shishi = auto_run(env_name="crossfire")
+        # shishi = auto_run(env_name="scout")
+        all_states_single = shishi.run_single()
+        jieguo.get_result_single(all_states_single)
+    jieguo.get_result_all(jieguo.all_games)
 
