@@ -161,6 +161,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         enemy_infantry_units = self.detected_state
         enemy_infantry_units_danger = [] 
         enemy_infantry_dot_danger = [] 
+        enemy_infantry_jvli_danger = [] 
         # 如果敌方步兵在正前方了，那就别去了。同时满足距离和方向的才算。
         for enemy_infantry_unit in enemy_infantry_units:
             # 遍历看一下是不是需要跑。
@@ -172,10 +173,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             dot_single = np.dot(vector_single, vector_xy) / np.linalg.norm(vector_xy+0.001) / np.linalg.norm(vector_single+0.001)
             
             
-            if enemy_distance<17 and dot_single>0.80:
+            if enemy_distance<20 and dot_single>0.30:
                 # 这两个阈值都是从案例里抠出来的。
                 enemy_infantry_units_danger.append(enemy_infantry_unit)
                 enemy_infantry_dot_danger.append(dot_single)
+                enemy_infantry_jvli_danger.append(enemy_distance)
+                
         
         # 至此，就筛出了究极高威胁的敌方步兵的位置。然后是根据这些位置确定绕路的方向，以target_pos_list的形式放在list中。
         if len(enemy_infantry_units_danger)>0:
@@ -214,12 +217,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 return pos_candidate
                
             # method2: find zuiwaimain units and xiuzheng.
-            dot_min = min(enemy_infantry_dot_danger)
-            index_min = enemy_infantry_dot_danger.index(dot_min)
+            # dot_min = min(enemy_infantry_dot_danger)
+            # index_min = enemy_infantry_dot_danger.index(dot_min)
+            jvli_min = min(enemy_infantry_jvli_danger)
+            index_min = enemy_infantry_jvli_danger.index(jvli_min)
             enemy_pos= enemy_infantry_units_danger[index_min]["cur_hex"]
             enemy_xy = self._hex_to_xy(enemy_pos)
             vector_xy_enemy = self._hex_to_xy(enemy_pos)
-            if np.dot(n1_xy,vector_xy_enemy)>0:
+            if np.dot(n1_xy,vector_xy_enemy)>0 or True: #disabled for debug
                 # which means the direction is right.
                 # n_xy_list = [n1_xy, n2_xy] 
                 try:
@@ -244,7 +249,21 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             target_pos_list = kargs["target_pos_list"]
         else:
             # target_pos_list作为类的一个属性在这里面自己维护了。
-            if (self.num<400 and self.num%20==2) or not("self.target_pos_list" in locals()): # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
+            try:
+                target_pos_list = self.target_pos_list
+                flag_exists = True
+            except:
+                flag_exists = False
+                self.target_pos_list = [self.target_pos,self.target_pos,self.target_pos]
+
+            # if (self.num<1500 and self.num%75==2) or not(flag_exists): # 原则上不用每一步都求解这个。只要位置变化了一次能够求一次就行了
+                # target_pos_list = self.get_pos_list_A(units, target_pos)
+                # self.target_pos_list = target_pos_list 
+            # else:
+                # target_pos_list = self.target_pos_list
+            
+            if self.flag_detect_update==True or (self.target_pos_list[0]==self.target_pos and self.num%75==2):
+                # 说明是刚刚更新了detect，那就把list更新一下。
                 target_pos_list = self.get_pos_list_A(units, target_pos)
                 self.target_pos_list = target_pos_list 
             else:
@@ -252,21 +271,26 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         
         for unit in units:
             # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
-            for i in range(len(target_pos_list)-1):
-                target_pos_single = target_pos_list[i]
+            target_pos_list_temp = copy.deepcopy(target_pos_list)
+            for i in range(len(target_pos_list_temp)-1):
+                target_pos_single = target_pos_list_temp[i]
                 pos_single = self.get_pos(unit)
-                if pos_single==target_pos_list[-1]:
+                if pos_single==target_pos_list_temp[-1]:
                     # arrived
                     break
                 if pos_single==target_pos_single:
                     # 说明到了这个点了，那就去下一个点。
-                    target_pos = target_pos_list[i+1]
+                    target_pos = target_pos_list_temp[i+1]
                     self.set_move_and_attack(unit,target_pos,model="force")
+                    del target_pos_list_temp[i]
+                    break 
                 else:
                     # 没到的话就无事发生。
                     # no, if not arrived, then go there.
-                    self.set_move_and_attack(unit,target_pos_single,model="normal")
-                    pass
+                    self.set_move_and_attack(unit,target_pos_single,model="force")
+                    # del target_pos_list_temp[i]
+                    break 
+        return self.target_pos_list
                 
     def final_juhe(self, units):
         flag_arrived, units_arrived = self.is_arrive(units,self.target_pos,tolerance = 0 )
@@ -689,9 +713,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         if jieju_flag2 == True:
             # self.group_A(IFV_units,target_pos,model="force")
-            self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
+            # self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
+            self.list_A(IFV_units,target_pos)
         elif self.num>300:
-            self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
+            self.list_A(IFV_units,target_pos)
 
         # if arrived, then juhe.
         if self.num>800:

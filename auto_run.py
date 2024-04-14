@@ -182,8 +182,8 @@ def save_replay(replay_name, data):
 
 if __name__ == "__main__":
     jieguo = record_result()
-    jieguo.record_config("debug field, give infantry a large threat value, 300.")
-    for i in range(5):
+    jieguo.record_config("debug raolu, using dot_single>0.30")
+    for i in range(50):
         # shishi = auto_run(env_name="defend")
         shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")

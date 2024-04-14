@@ -50,10 +50,11 @@ class BaseAgent(ABC):
 
         self.status = {}
         self.status_old = {} 
-        self.detected_state = {} 
+        self.detected_state = []
         self.detected_state2 = {} 
 
         self.num = 0 
+        self.target_pos = 0 
 
         self.abstract_state = {}  # key 是装备ID，value是抽象状态
 
@@ -64,6 +65,7 @@ class BaseAgent(ABC):
         # type: 0 for enemy units, 1 for artillery fire, 2 for unit lost . -1 for my unit, negative threaten
         self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
         self.env_name = "cross_fire" # defualt. 
+        self.flag_detect_update = True
 
     def get_scenario_info(self, scenario: int):
         SCENARIO_INFO_PATH = os.path.join(
@@ -378,6 +380,10 @@ class BaseAgent(ABC):
         # it is assumed that only my state passed here.
         # xxh 1226 legacy issues: how to get the state of emeny without the whole state?
         # 0106,it is said that detected enemy also included in my state.
+        geshu_old = len(self.detected_state)
+        # 这里其实有点问题，逻辑应该是探测到的敌方单位就再也不删除了，有状态更新就更新，没有就保持不变。
+        detected_state_new = copy.deepcopy(self.detected_state)
+
         self.detected_state = []
         units = state["operators"]
         
@@ -392,8 +398,7 @@ class BaseAgent(ABC):
         color_enemy = 1 - self.color
         detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
 
-        # 这里其实有点问题，逻辑应该是探测到的敌方单位就再也不删除了，有状态更新就更新，没有就保持不变。
-        detected_state_new = copy.deepcopy(self.detected_state)
+        
         
         # 去重和更新。
         # for unit_old in self.detected_state:
@@ -416,6 +421,15 @@ class BaseAgent(ABC):
                                 
         self.detected_state = detected_state_new
         # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
+        geshu_new = len(self.detected_state)
+        if geshu_old==geshu_new:
+            self.flag_detect_update = False
+        else:
+            self.flag_detect_update = True
+
+        # this is for debug
+        if geshu_old >geshu_new:
+            raise Exception("get_detected_state: detected state decreased, G. ")
 
         return self.detected_state
     
@@ -633,6 +647,12 @@ class BaseAgent(ABC):
         UAV_units = self.select_by_type(units_input,key="sub_type",value=0)
         UAV_units = self.select_by_type(UAV_units,key="color",value=0)
         return UAV_units
+    
+    def filter_arrived_units(self,units):
+        # this is to find which unit arrived.
+        arrived_units = self.select_by_type(units,key="cur_hex",value=self.target_pos)
+        return arrived_units
+    
     def _hex_to_xy(self,hex):
         # 要搞向量运算来出阵形，所以还是有必要搞一些转换的东西的。
         xy = hex_to_xy(hex)
@@ -704,19 +724,13 @@ class BaseAgent(ABC):
                 # target_selected
                 # decide target ID
                 target_ID_selected, index_target_ID = self._selecte_compare_list(target_ID, target_list)
+                # decide weapon_ID
+                weappon_type_selected = weapon_type_list[index_target_ID]
             else:
                 # no target selected.
-                # best = max(candidate, key=lambda x: x["attack_level"])
-                # target_ID_selected = best["target_obj_id"]
-                
-                # index_target_ID = ? 
-
-                target_ID_selected = target_ID_list[0]
-                index_target_ID = 0 
-
-            # decide weapon_ID
-            weappon_type_selected = weapon_type_list[index_target_ID]
-            # 0219 need debug here, about how to select weapon type. 
+                best = max(target_list, key=lambda x: x["attack_level"])
+                target_ID_selected = best["target_obj_id"]
+                weappon_type_selected =  best["weapon_id"]
 
             # then generate action
             action_gen = {
@@ -1388,13 +1402,13 @@ class BaseAgent(ABC):
 
     def __handle_move_and_attack3(self, attacker_ID, target_pos):
         # 这个是进一步升级来的，不要路径点序列了，一次只走一格，每一格都判断威胁程度 
-        # 0319,这个确实能用，也确实能够爽爽避障，但是是走一格停一轮的，用在穿越火线里面是不科学的。
                
         unit = self.get_bop(attacker_ID)
         attacker_pos =self.get_pos(attacker_ID)
         attacker_xy = self._hex_to_xy(attacker_pos)
         target_xy = self._hex_to_xy(target_pos)
         vector_xy = target_xy - attacker_xy
+        jvli = self.distance(target_pos,attacker_pos) 
 
         # 先打了再说。
         self._fire_action(attacker_ID)
@@ -1421,6 +1435,7 @@ class BaseAgent(ABC):
                 flag_arrive=True
             else:
                 flag_arrive=False
+        
 
         if flag_arrive==False:
             # 走着呢，由于都是走一格，所以这个就没有什么所谓了吧。
@@ -1460,11 +1475,14 @@ class BaseAgent(ABC):
             # 选出来之后就过去呗。
             self._move_action(attacker_ID, pos_next)
         
-        jvli = self.distance(target_pos,attacker_pos)  
+         
         if jvli > 0:
             # 那就是还没到，那就继续移动
             self.abstract_state[attacker_ID]["flag_moving"] = not(unit["stop"])
             self.abstract_state[attacker_ID]["jvli"] = jvli
+            # if flag_arrive==False:
+                # this is to tackle the case that abstract_state forced change to move and attack.
+                # self._move_action(attacker_ID, pos_next)
         else:
             # 那就是到了，那就要改抽象状态里面了。
             self.__finish_abstract_state(attacker_ID)      
