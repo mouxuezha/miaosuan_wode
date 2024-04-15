@@ -128,6 +128,8 @@ class ScoutExecutor:
         self.suspected = set()
         self.repeat_map = {} # 用于附加寻路代价，更倾向于探索未知区域
         self.threat_map = {} # 用于寻路代价值，更倾向于避开敌人射程
+        self.air_priority = {}
+        self.car_priority = {}
 
     def setup(self, task, agent):
         air_start = []
@@ -148,7 +150,14 @@ class ScoutExecutor:
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
         # self.qrs_points = np.array([rc2qrs(hex2rc(point)) for point in self.area])
-
+        for point in self.area:
+            air_ob_area = agent.map.get_ob_area2(point, BopType.Aircraft, BopType.Vehicle)
+            self.air_priority[point] = len(air_ob_area)
+            car_ob_area = agent.map.get_ob_area2(point, BopType.Vehicle, BopType.Vehicle)
+            self.car_priority[point] = len(car_ob_area)
+        self.max_air_ob_num = max(self.air_priority.values())
+        self.max_car_ob_num = max(self.car_priority.values())
+        
     def area2xy(self):
         """将侦察区域转换为直角坐标"""
         points = np.array([divmod(point, 100) for point in self.area])
@@ -244,10 +253,12 @@ class ScoutExecutor:
         last_suspect_num = len(self.suspected)
         self.suspected -= new_ob
         cur_suspect_num = len(self.suspected)
-        if last_suspect_num > cur_suspect_num and cur_suspect_num > 0:
-            self.re_allocate_air(agent)
-        # TODO：若无人机后续路径点已被侦察到，则重新规划路径？
-        # 好像还是得写一个普适的任意区域生成扫描路径的函数，但感觉比较困难
+        if last_suspect_num > cur_suspect_num:
+            for obj_id, traj in self.air_traj.items():
+                if traj[0] in new_ob:
+                    traj.pop(0)
+                    if cur_suspect_num > 0:
+                        self.re_allocate_air(agent)
 
     def can_you_shoot_me(self, agent, cur_hex):
         cond = agent.map.basic[cur_hex // 100][cur_hex % 100]["cond"]
@@ -349,6 +360,10 @@ class ScoutExecutor:
                     if neigh in self.area:
                         if unit["type"] == BopType.Vehicle:
                             neigh_cost += self.threat_map[neigh]
+                            neigh_cost -= self.car_priority[neigh] / self.max_car_ob_num / 5
+                        # TODO: 这个else可能不需要
+                        else:
+                            neigh_cost -= self.air_priority[neigh] / self.max_air_ob_num / 5
                         neigh_cost += self.repeat_map[neigh]
                     else:
                         neigh_cost += 0.5
@@ -405,7 +420,7 @@ class ScoutExecutor:
         """
         if agent.time.cur_step < 3:
             self.setup(task, agent)
-        # self.area = list(agent.map.get_grid_distance(task["hex"], 0, task["radius"]))
+
         if not self.area:
             print("ScoutExecutor: area is empty")
             return  # 侦察区域不能为空
@@ -426,6 +441,9 @@ class ScoutExecutor:
                 cur_hex = unit["cur_hex"]
                 self.update_unit(obj_id, cur_hex)
                 self.update_unscouted(agent, cur_hex, unit["type"])
+                if unit["type"] == BopType.Aircraft:
+                    if self.air_traj[obj_id] and cur_hex == self.air_traj[obj_id][0]:
+                        self.air_traj[obj_id].pop(0)
                 # print(f"remain: {len(self.unscouted)}")
 
             if obj_id not in available_units or agent.flag_act[obj_id]:
@@ -444,7 +462,7 @@ class ScoutExecutor:
             # 可疑区域探索完毕后，逐个探索未探测区域离其当时位置最远的点
             def air_scout(obj_id, cur_hex):
                 if len(self.air_traj[obj_id]):
-                    destination = self.air_traj[obj_id].pop(0)
+                    destination = self.air_traj[obj_id][0]
                 else:
                     destination = self.get_farthest(agent, cur_hex, self.unscouted)
                 return destination
@@ -454,6 +472,7 @@ class ScoutExecutor:
                 to_detected = (
                     list(self.suspected) if self.suspected else list(self.unscouted)
                 )
+                
                 destination = random.choice(to_detected)
                 return destination
             
@@ -465,5 +484,6 @@ class ScoutExecutor:
             # route = agent.gen_move_route(unit, int(destination))
             route = self.my_a_star(agent, unit, int(destination))
             if route:
-                agent.actions.append(agent.act_gen.move(obj_id, route))
+                # agent.actions.append(agent.act_gen.move(obj_id, route))
+                agent.actions.append(agent.act_gen.move(obj_id, route[:2]))
                 agent.flag_act[obj_id] = True

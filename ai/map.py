@@ -30,7 +30,7 @@ class Map:
 
         self.cost = cost_data
         self.see = see_data
-        self.ob = np.load("ob_mat.npy")
+        self.ob = np.load("ai/ob_mat.npy")
 
     def is_valid(self, pos):
         """
@@ -284,10 +284,11 @@ class Map:
                     return 1
 
         mode = get_ob_mode(unit_type, target_type)
+        idx = center // 100 * self.max_col + center % 100
         if passive:
-            ob_area = np.where(self.ob[mode][:, center])[0]
+            ob_area = np.where(self.ob[mode][:, idx])[0]
         else:
-            ob_area = np.where(self.ob[mode][center, :])[0]
+            ob_area = np.where(self.ob[mode][idx, :])[0]
         ob_area = set(ob_area)
         if exclude_area:
             ob_area -= exclude_area
