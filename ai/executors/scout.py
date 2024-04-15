@@ -147,6 +147,7 @@ class ScoutExecutor:
         self.allocate_traj(rough_start, task["hex"])
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
+        # self.qrs_points = np.array([rc2qrs(hex2rc(point)) for point in self.area])
 
     def area2xy(self):
         """将侦察区域转换为直角坐标"""
@@ -198,6 +199,28 @@ class ScoutExecutor:
             self.air_traj[obj_ids[i]] = total_traj[split * i : split * (i + 1)]
             print(f"obj_id: {obj_ids[i]}, traj: {self.air_traj[obj_ids[i]]}")
 
+    def allocate_traj_hex(self, start, center):
+        # 方向向量，模长均为2
+        q_vec = np.array([3**0.5, 1])
+        r_vec = np.array([0, -2])
+        s_vec = np.array([-3**0.5, 1])
+        vecs = [q_vec, r_vec, s_vec]
+        
+        r_start, c_start = divmod(start, 100)
+        r_center, c_center = divmod(center, 100)
+        m_vec = np.array([r_center - r_start, c_start - c_center])
+        
+        # 计算与m_vec点积最大的方向
+        dot_prods = [abs(np.dot(m_vec, vec)) for vec in vecs]
+        direc = dot_prods.index(max(dot_prods))
+        sort_idx = np.argsort(self.qrs_points[:, direc])
+        if np.dot(m_vec, vecs[direc]) > 0:
+            sort_idx = sort_idx[::-1]
+        sorted_qrs_points = self.qrs_points[sort_idx]
+        
+        first = sorted_qrs_points[0][direc]
+        last = sorted_qrs_points[-1][direc]
+        
     def update_unit(self, obj_id, cur_hex):
         """更新算子的当前和上一格位置信息"""
         if obj_id not in self.units.keys():
@@ -215,7 +238,7 @@ class ScoutExecutor:
         for h in new_ob:
             self.repeat_map[h] += 0.2
         if cur_hex in self.area:
-            self.repeat_map[cur_hex] += 0.4
+            self.repeat_map[cur_hex] += 0.2
         
         # 顺道把可疑区域一块更新了
         last_suspect_num = len(self.suspected)
@@ -223,7 +246,6 @@ class ScoutExecutor:
         cur_suspect_num = len(self.suspected)
         if last_suspect_num > cur_suspect_num and cur_suspect_num > 0:
             self.re_allocate_air(agent)
-
         # TODO：若无人机后续路径点已被侦察到，则重新规划路径？
         # 好像还是得写一个普适的任意区域生成扫描路径的函数，但感觉比较困难
 
@@ -261,14 +283,13 @@ class ScoutExecutor:
         return farthest_hex    
 
     def guess_enemy(self, cur_units, agent):
-        # assert len(self.units) - len(cur_units) == 1
         old_units = set(self.units.keys())
         diff = list(old_units - cur_units)
         for missed_unit in diff:
             area_last = self.can_you_shoot_me(agent, self.units[missed_unit][0])
             area_cur = self.can_you_shoot_me(agent, self.units[missed_unit][1])
             tmp_suspect = area_cur - area_last & self.unscouted - set(self.enemy_pos.values())
-        # tmp_suspect = area_cur - area_last & self.unscouted
+
             if len(self.suspected) == 0:
                 self.suspected = tmp_suspect
             else:
