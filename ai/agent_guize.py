@@ -1103,8 +1103,15 @@ class agent_guize(Agent):  # TODO: 换成直接继承BaseAgent，解耦然后改
     
     def update_threaten_source(self):
         # 0229 单位损失得储存，别的倒是不太有所谓。
+<<<<<<< HEAD
 
         # 要跨步骤存的先拿出来好了。
+=======
+        # 敌人单位也是要跨步骤储存的，被打的地方也是，反而炮火不用
+
+        # 要跨步骤存的先拿出来好了。
+        
+>>>>>>> master
         # threaten_source_set_type2 = set() 
         threaten_source_list_type2 = [] 
         for source_single in self.threaten_source_list:

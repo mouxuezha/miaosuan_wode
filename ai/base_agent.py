@@ -1136,6 +1136,17 @@ class BaseAgent(ABC):
                 field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
 
         #  TODO: using tongshi to modify the field further.
+        for unit in self.detected_state:
+            # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
+            enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
+            enemy_type = unit["sub_type"]
+            my_type = 2 # 直接用车辆了，
+            # 调地图，看是不是会被打到。
+            flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+            if flag_can_shoot>0:
+                # field_value = field_value + a1*100 / (a2 + jvli)
+                # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
+                field_value = field_value + a1*100 / (a2 )
             
         return field_value
 
