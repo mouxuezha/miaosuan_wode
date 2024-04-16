@@ -2,6 +2,7 @@ import heapq
 import random
 import numpy as np
 from .const import BopType, CondType
+import os
 
 ob_range = [
     [10, 25, 1],
@@ -30,7 +31,9 @@ class Map:
 
         self.cost = cost_data
         self.see = see_data
-        self.ob = np.load("ai/ob_mat.npy")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        ob_file_path = os.path.join(current_dir, "ob_mat.npy")
+        self.ob = np.load(ob_file_path)
 
     def is_valid(self, pos):
         """
