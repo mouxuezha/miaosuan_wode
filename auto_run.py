@@ -183,7 +183,7 @@ def save_replay(replay_name, data):
 if __name__ == "__main__":
     jieguo = record_result()
     jieguo.record_config("debug raolu, 增加了分类讨论的绕路逻辑，增加了被打的势场修正，原则上能好点。")
-    for i in range(50):
+    for i in range(10):
         # shishi = auto_run(env_name="defend")
         shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")
