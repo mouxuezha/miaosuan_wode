@@ -217,10 +217,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 xy_center = enemy_xy
 
                 try:
-                    xy_candidate = xy_center + 20*n_xy_list[0]
+                    xy_candidate = xy_center + 18*n_xy_list[0]
                     pos_candidate = self._xy_to_hex(xy_candidate)
                 except:
-                    xy_candidate = xy_center + 20*n_xy_list[1]
+                    xy_candidate = xy_center + 18*n_xy_list[1]
                     pos_candidate = self._xy_to_hex(xy_candidate) 
 
                 return pos_candidate
@@ -235,7 +235,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     # which means the direction is right.
                     # n_xy_list = [n1_xy, n2_xy] 
                     try:
-                        xy_candidate = enemy_xy + 20*n1_xy
+                        xy_candidate = enemy_xy + 18*n1_xy
                         pos_candidate = self._xy_to_hex(xy_candidate)
                     except:
                         # if it doesn't work, then use method1
@@ -332,6 +332,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             else:
                 target_pos_list = self.target_pos_list
         
+        # 强行判断是否到了，到了就改成目标点。越写越乱越写越丑了，但是先不管了，能用就行。
+        jvli = self.distance(self.get_pos_average(units), target_pos_list[0])
+        if jvli < 3:
+            # 说明是到了
+            target_pos_list[0] = self.target_pos
+
         for unit in units:
             # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
             target_pos_list_temp = copy.deepcopy(target_pos_list)
