@@ -263,7 +263,6 @@ class ScoutExecutor:
             r, c, _ = clusters_points[idx]
             point = int(r) * 100 + int(c)
             self.car_cluster.append([point, 0])
-        print(self.car_cluster)    
 
     def update_unscouted(self, agent, cur_hex, unit_type):
         scouted = set(self.area) - self.unscouted
@@ -493,8 +492,12 @@ class ScoutExecutor:
             self.car_to_detect |= agent.map.get_ob_area2(point, BopType.Vehicle, BopType.Vehicle, passive=True)
         self.car_to_detect |= self.unscouted
         self.car_to_detect &= set(self.area)
-        if change_flag and move_flag and agent.time.cur_step > 151:
-            self.update_cluster(agent)
+        if move_flag and agent.time.cur_step > 151:
+            if change_flag:
+                self.update_cluster(agent)
+        elif sum([x[1] for x in self.car_cluster]) == len(self.car_cluster):
+            for p in self.car_cluster:
+                p[1] = 0
                 
         for obj_id, unit in agent.valid_units.items():
             if obj_id not in available_units or agent.flag_act[obj_id]:
@@ -523,7 +526,7 @@ class ScoutExecutor:
                 if self.car_cluster:
                     tmp = [x[0] for x in self.car_cluster if x[1] == 0]
                     destination = self.get_nearest(agent, cur_hex, tmp)
-                    print(f"destination: {destination}")
+                    # print(f"destination: {destination}")
                     for i in range(len(self.car_cluster)):
                         if self.car_cluster[i][0] == destination:
                             self.car_cluster[i][1] = 1
