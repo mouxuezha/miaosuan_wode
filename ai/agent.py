@@ -187,14 +187,20 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 先求两个垂直于路径的法向量。
             n1_xy = np.array([vector_xy[1], -1*vector_xy[0]]) / np.linalg.norm(vector_xy)
             n2_xy = -1*n1_xy
-
+            jvli_min = min(enemy_infantry_jvli_danger)
+            index_min = enemy_infantry_jvli_danger.index(jvli_min)
+            enemy_pos= enemy_infantry_units_danger[index_min]["cur_hex"]
+            enemy_xy = self._hex_to_xy(enemy_pos)
             # # method1: 先取个中间点出来
             def method1(enemy_infantry_units_danger):
                 pos_ave_enemy = self.get_pos_average(enemy_infantry_units_danger)
                 xy_ave_enemy = self._hex_to_xy(pos_ave_enemy)
-                vector_ave_enemy = xy_ave_enemy - xy_ave            
+
+                # vector_ave_enemy = xy_ave_enemy - xy_ave         
+                vector_xy_enemy = enemy_xy - xy_ave
+
                 # 然后检测哪个比较好。
-                if np.dot(n1_xy,vector_xy)>0:
+                if np.dot(n1_xy,vector_xy_enemy)>0:
                     # 那说明是偏向这个方向，绕道的路就得往另一个方向去了。
                     n_xy_list = [n2_xy, n1_xy] 
                 else:
@@ -202,43 +208,100 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 # 道理上不可能两个方向都在外面，因为起点终点在垂线的不同侧，且都在范围内。
                 # 所以两边必有一边是能够绕路的。
 
-                # 然后然后开始计算距离点了。
-                
-                pos_center = self.get_pos_average([pos_ave,target_pos], model="input_hexs")
-                # 然后算。反正两个方向，总得有一个对的。要是都不对也防一手。
-                xy_center = self._hex_to_xy(pos_center)
+                # # 然后然后开始计算距离点了。
+                # pos_center = self.get_pos_average([pos_ave,target_pos], model="input_hexs")
+                # # 然后算。反正两个方向，总得有一个对的。要是都不对也防一手。
+                # xy_center = self._hex_to_xy(pos_center)
+
+                # 这个改一下，向量运算的起点还是改成最近的敌方单位的位置恐怕好一些。
+                xy_center = enemy_xy
+
                 try:
-                    xy_candidate = xy_center + 15*n_xy_list[0]
+                    xy_candidate = xy_center + 20*n_xy_list[0]
                     pos_candidate = self._xy_to_hex(xy_candidate)
                 except:
-                    xy_candidate = xy_center + 15*n_xy_list[1]
+                    xy_candidate = xy_center + 20*n_xy_list[1]
                     pos_candidate = self._xy_to_hex(xy_candidate) 
 
                 return pos_candidate
-               
-            # method2: find zuiwaimain units and xiuzheng.
-            # dot_min = min(enemy_infantry_dot_danger)
-            # index_min = enemy_infantry_dot_danger.index(dot_min)
-            jvli_min = min(enemy_infantry_jvli_danger)
-            index_min = enemy_infantry_jvli_danger.index(jvli_min)
-            enemy_pos= enemy_infantry_units_danger[index_min]["cur_hex"]
-            enemy_xy = self._hex_to_xy(enemy_pos)
-            vector_xy_enemy = self._hex_to_xy(enemy_pos)
-            if np.dot(n1_xy,vector_xy_enemy)>0 or True: #disabled for debug
-                # which means the direction is right.
-                # n_xy_list = [n1_xy, n2_xy] 
-                try:
-                    xy_candidate = enemy_xy + 15*n1_xy
-                    pos_candidate = self._xy_to_hex(xy_candidate)
-                except:
-                    # if it doesn't work, then use method1
-                    pos_candidate =  method1(enemy_infantry_units_danger) 
+
+            def method2(enemy_infantry_units_danger):   
+                # method2: find zuiwaimain units and xiuzheng.
+                # dot_min = min(enemy_infantry_dot_danger)
+                # index_min = enemy_infantry_dot_danger.index(dot_min)
+                
+                vector_xy_enemy = enemy_xy - xy_ave
+                if np.dot(n1_xy,vector_xy_enemy)>0 or True: #disabled for debug
+                    # which means the direction is right.
+                    # n_xy_list = [n1_xy, n2_xy] 
+                    try:
+                        xy_candidate = enemy_xy + 20*n1_xy
+                        pos_candidate = self._xy_to_hex(xy_candidate)
+                    except:
+                        # if it doesn't work, then use method1
+                        pos_candidate =  method1(enemy_infantry_units_danger) 
+                else:
+                    pos_candidate =  method1(enemy_infantry_units_danger)
+                return pos_candidate
+            
+            # 更合理的应该是再来一层，看探测到的东西是在同一个方向还是不同的方向，然后分别调。
+            int_method = self.get_direction_list_A(units, target_pos,self.detected_state)
+            if int_method == 1:
+                pos_candidate = method1(enemy_infantry_units)
+            elif int_method == 2:
+                pos_candidate = method2(enemy_infantry_units)  
             else:
-                pos_candidate =  method1(enemy_infantry_units_danger)            
+                raise Exception("invalid list_A method, G!")
+            pos_candidate = method2(enemy_infantry_units)            
         else:
             pos_candidate = target_pos
         return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
-                
+
+    def get_direction_list_A(self,units, target_pos,detected_state):
+        # 这个用来判断到时候往哪边去绕。目前的说法是，如果发现了一个，就往中心线反方向去绕；如果发现了很多个且在同侧了，就还是往中心线反方向去绕，如果发现多个还在异侧了，那就智能method2，往外面去绕了。所以这个就返回一个int就好了
+        int_method=0
+        # 虽然重复计算了，但是适度的独立性是必要的
+        pos_ave = self.get_pos_average(units)
+        xy_ave = self._hex_to_xy(pos_ave)
+        
+        target_xy= self._hex_to_xy(target_pos)
+        vector_xy = target_xy - xy_ave
+
+        # 先求两个垂直于路径的法向量。
+        n1_xy = np.array([vector_xy[1], -1*vector_xy[0]]) / np.linalg.norm(vector_xy)
+        n2_xy = -1*n1_xy
+
+        # 然后来一堆向量运算。
+        flag_list_which_side = [] 
+        for unit in detected_state:
+            # 分别计算每一个探测到的东西的flag_list_which_side
+            xy_single = self._hex_to_xy(unit["cur_hex"])
+            vector_single = xy_single - xy_ave
+            flag_list_which_side.append(np.dot(vector_single, n1_xy) > 0)
+
+        # 然后开始判断了。
+        if len(set(flag_list_which_side)) == 1:
+            # 那就是只有一个，那就还好。
+            int_method = 1
+        elif len(set(flag_list_which_side)) >= 2:
+            # 两个就要看是不是同侧了
+            flag_one_side = True
+            for i in range(len(flag_list_which_side)-1):
+                if flag_list_which_side[0] * flag_list_which_side[i+1]>0 :
+                    # 一个正的一个负的，那就说明不是一侧了，
+                    flag_one_side = flag_one_side and False
+                else:
+                    # 一直都是正的，那就说明都是同一侧。
+                    flag_one_side = flag_one_side and True
+            if flag_one_side == True:
+                # 那就是全都在同侧了，那也挺好的。
+                int_method = 1 
+            else:
+                # 那就是有不同侧的，得想辙
+                int_method = 2 
+            pass
+        return int_method
+
     def list_A(self, units, target_pos, **kargs):
         # “选取部队横越地图”，实现一个宏观层面的绕行机制。
         if len(units) ==0:
@@ -715,7 +778,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.group_A(IFV_units,target_pos,model="force")
             # self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
             self.list_A(IFV_units,target_pos)
-        elif self.num>300:
+        if self.num>300:
             self.list_A(IFV_units,target_pos)
 
         # if arrived, then juhe.
