@@ -5,6 +5,7 @@ import os
 import time
 import zipfile
 import sys 
+import datetime
 sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
 from train_env.cross_fire_env import CrossFireEnv
 from train_env.scout_env import ScoutEnv
@@ -27,8 +28,7 @@ class auto_run():
         else:
             raise Exception("auto_run: invalid env setting, G.")
         
-
-        
+        self.__init_analyse()
         pass
 
     def __init_defend(self):
@@ -72,9 +72,20 @@ class auto_run():
         self.agent = Agent()
         self.begin = time.time()
 
+    def __init_analyse(self):
+        self.reward_ave = 0 
+        self.return_ave = 0 
+        self.reward_list = [] 
+        self.return_list = [] 
+        self.config_str = ""
+        self.all_games = []
+    
     def run_single(self):
         # varialbe to build replay
+        self.begin = time.time()
+
         self.all_states = []
+
 
         ai_user_name = 'myai'
         ai_user_id = 1
@@ -110,6 +121,54 @@ class auto_run():
 
         # save replay
         save_replay(self.begin, self.all_states)
+        return self.all_states
+        # pass
+
+class record_result():
+    def __init__(self):
+        self.reward_ave = 0 
+        self.return_ave = 0 
+        self.reward_list = [] 
+        self.return_list = [] 
+        self.config_str = ""
+        self.all_games = []
+
+    def record_config(self, config_str:str):
+        self.config_str = config_str
+
+    def get_result_single(self,all_states):
+        if len(self.config_str)==0:
+            raise Exception("auto_run: config_str is empty, G. do not be lazy.")
+        self.all_games.append(all_states)
+        
+    def get_result_all(self,all_games):
+        # get result from one round
+        geshu = len(all_games)
+        for i in range(geshu):
+            state_single = all_games[i][-1]
+            reward_single = state_single["reward"]
+            return_single = state_single["return"]
+            self.reward_list.append(reward_single)
+            self.return_list.append(return_single)
+            self.reward_ave = self.reward_ave + reward_single
+            self.return_ave = self.return_ave + return_single
+        self.reward_ave = self.reward_ave / geshu 
+        self.return_ave = self.return_ave / geshu 
+        
+        # then save all these things.
+        file_name = f"logs/replays/result_analyse.txt"
+        if not os.path.exists("logs/replays/"):
+            os.makedirs("logs/replays/")
+        current_time = datetime.datetime.now()
+        file_txt = open(file_name, "a+")
+        file_txt.write(f"{self.config_str}\n")
+        file_txt.write(f"time: {current_time}\n")
+        file_txt.write(f"reward_ave: {self.reward_ave}\n")
+        file_txt.write(f"return_ave: {self.return_ave}\n")
+        file_txt.write(f"reward_list: {self.reward_list}\n")
+        file_txt.write(f"return_list: {self.return_list}\n")
+        file_txt.write("\n\n\n")
+        file_txt.close()
         pass
 
 # copy from demo code
@@ -122,9 +181,13 @@ def save_replay(replay_name, data):
 
 
 if __name__ == "__main__":
-    for i in range(5):
+    jieguo = record_result()
+    jieguo.record_config("debug raolu, using dot_single>0.30")
+    for i in range(50):
         # shishi = auto_run(env_name="defend")
-        # shishi = auto_run(env_name="crossfire")
-        shishi = auto_run(env_name="scout")
-        shishi.run_single()
+        shishi = auto_run(env_name="crossfire")
+        # shishi = auto_run(env_name="scout")
+        all_states_single = shishi.run_single()
+        jieguo.get_result_single(all_states_single)
+    jieguo.get_result_all(jieguo.all_games)
 
