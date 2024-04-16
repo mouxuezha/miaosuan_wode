@@ -182,11 +182,12 @@ def save_replay(replay_name, data):
 
 if __name__ == "__main__":
     jieguo = record_result()
-    jieguo.record_config("debug raolu, using dot_single>0.30")
-    for i in range(50):
+    # jieguo.record_config("debug raolu, using dot_single>0.30")
+    jieguo.record_config("test scout with kmeans 200")
+    for i in range(200):
         # shishi = auto_run(env_name="defend")
-        shishi = auto_run(env_name="crossfire")
-        # shishi = auto_run(env_name="scout")
+        # shishi = auto_run(env_name="crossfire")
+        shishi = auto_run(env_name="scout")
         all_states_single = shishi.run_single()
         jieguo.get_result_single(all_states_single)
     jieguo.get_result_all(jieguo.all_games)
