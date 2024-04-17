@@ -1300,32 +1300,33 @@ class BaseAgent(ABC):
         if self.num <2:
             self.calculated_can_shoot = {} # {pos_int:flag_can_shoot}
 
-        # 选定所有单位周围的两个格子，然后去重
+        # 选定所有单位周围的两个格子，然后去重 # 算了一个格子吧，两个也没啥用反正
         distance_start = 0 
-        distance_end = 2 
+        distance_end = 1
         ID_list = self.get_ID_list(self.status)
         pos_set = set() 
         for attacker_ID in ID_list:
+            # 这里还可以优化一下，减少重复计算
             pos_attacker = self.get_pos(attacker_ID)
             pos_set_single = self.map.get_grid_distance(pos_attacker, distance_start, distance_end)
             pos_set = pos_set | pos_set_single
         
         # 选定所有单位的格子好了
-
-        # 然后更新影响的来源，标量场嘛无所谓了。
-        self.threaten_source_list = self.update_threaten_source()
-
-        # 然后更新那一堆点里面的标量场。
-        self.threaten_field = {}
-        for pos_single in pos_set:
-            field_value = self.update_field_single(pos_single, self.threaten_source_list)
-            threaden_field_single = {pos_single:field_value}
-            self.threaten_field.update(threaden_field_single)
-            
         
-        # # need debug 0229
-            
-        # print("update_field: finished, but was not used to modify the path yet, 0229")
+        # 然后更新影响的来源，标量场嘛无所谓了。
+        geshu_old = len(self.threaten_source_list)
+        self.threaten_source_list = self.update_threaten_source()
+        geshu_new = len(self.threaten_source_list)
+        
+        # 为了计算速度，就别每一格都更新了？但是好像不行，要走路的话就还是得所有时候都保证周围全都有势场。
+        if geshu_old != geshu_new or True:
+            # 那就说明更新了源了，那就得更新一下场。
+            # 然后更新那一堆点里面的标量场。
+            self.threaten_field = {}
+            for pos_single in pos_set:
+                field_value = self.update_field_single(pos_single, self.threaten_source_list)
+                threaden_field_single = {pos_single:field_value}
+                self.threaten_field.update(threaden_field_single)
         
         return self.threaten_field
     
@@ -1343,11 +1344,11 @@ class BaseAgent(ABC):
             if threaten_source["type"] == 0:
                 # 有敌方单位，就别去送了。
                 # field_value = field_value + a1*3 / (a2 + jvli) # never touch the enemy. 
-                field_value = field_value + a1*300 / (a2 + jvli) # never touch the enemy. 
+                field_value = field_value + a1 / (a2 + jvli) # never touch the enemy. 
             elif threaten_source["type"] == 1:
                 # 有炮火覆盖的地方，如果快开始爆炸了就别过去送了，绕一下。
                 if threaten_source["delay"] == 0:
-                    field_value = field_value + a1 / (a2 + 1 + jvli)
+                    field_value = field_value + a1*2 / (a2 + 1 + jvli*100) # 这个只要别去那一格就行了，周围其他地方不影响的
             elif threaten_source["type"] == 2: 
                 # 之前有东西损失过的地方，如果人家CD快转好了就别过去送了，绕一下。
                 if threaten_source["delay"] < 30:
@@ -1378,7 +1379,7 @@ class BaseAgent(ABC):
         if flag_can_shoot>0:
             # field_value = field_value + a1*100 / (a2 + jvli)
             # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
-            field_value = field_value + a1*100 / (a2 )            
+            field_value = field_value + a1 / (a2)            
         return field_value
 
     def update_detectinfo(self, detectinfo):
@@ -1691,6 +1692,7 @@ class BaseAgent(ABC):
             neighbor_field_list = [] 
             neighbor_pos_list_selected = []
             neighbor_field_list_selected = []
+            
             for i in range(len(neighbor_pos_list)):
                 neighbor_pos_single = neighbor_pos_list[i]
                 if neighbor_pos_single ==-1:
@@ -1699,20 +1701,28 @@ class BaseAgent(ABC):
                     neighbor_field_single = self.threaten_field[neighbor_pos_single]
                 neighbor_field_list.append(neighbor_field_single)
 
-                if neighbor_field_single<50:
-                    # 选出一些比较安全的点。如果没有比较安全的点就只能用全部点了。
-                    neighbor_pos_list_selected.append(neighbor_pos_single)
-                    neighbor_field_list_selected.append(neighbor_field_single)
-            
-            # 然后根据威胁情况看后面往哪里去。
-            if len(neighbor_pos_list_selected)>3:
-                # 说明周围存在相对安全一些的区域
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected,vector_xy)
-                pass
-            else:
-                # 说明周围全是高威胁的区域了，那还不如拼一枪。
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-                pass
+                # if neighbor_field_single<50:
+                #     # 2024年4月17日19:20:19 这个逻辑有问题，用阈值可能出现全场，想办法换个排序啥的恐怕会好点。比如从威胁最小的三个点里找
+                #     # 选出一些比较安全的点。如果没有比较安全的点就只能用全部点了。
+                #     neighbor_pos_list_selected.append(neighbor_pos_single)
+                #     neighbor_field_list_selected.append(neighbor_field_single)
+
+            # if len(neighbor_pos_list_selected)>2:
+            #     # 说明周围存在相对安全一些的区域
+            #     pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected,vector_xy)
+            #     pass
+            # else:
+            #     # 说明周围全是高威胁的区域了，那还不如拼一枪。
+            #     pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+            #     pass    
+                    
+            # 搞个排序，会相对好一点
+            index_list = list(enumerate(sorted(neighbor_field_list)))
+            # 然后拿三个出来。或者四个？三个吧
+                # 然后根据威胁情况看后面往哪里去。
+            for i in range(3):
+                neighbor_field_list_selected.append(neighbor_pos_list[index_list[i]])
+            pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
             
             # 选出来之后就过去呗。
             self._move_action(attacker_ID, pos_next)
