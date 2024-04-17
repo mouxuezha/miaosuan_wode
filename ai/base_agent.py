@@ -1692,13 +1692,15 @@ class BaseAgent(ABC):
             neighbor_field_list = [] 
             neighbor_pos_list_selected = []
             neighbor_field_list_selected = []
-            
+            neighbor_field_array = np.zeros((6,2))
             for i in range(len(neighbor_pos_list)):
                 neighbor_pos_single = neighbor_pos_list[i]
                 if neighbor_pos_single ==-1:
                     neighbor_field_single = 0
                 else:
                     neighbor_field_single = self.threaten_field[neighbor_pos_single]
+                neighbor_field_array[i,0] = neighbor_pos_single
+                neighbor_field_array[i,1] = neighbor_field_single
                 neighbor_field_list.append(neighbor_field_single)
 
                 # if neighbor_field_single<50:
@@ -1717,13 +1719,25 @@ class BaseAgent(ABC):
             #     pass    
                     
             # 搞个排序，会相对好一点
-            index_list = list(enumerate(sorted(neighbor_field_list)))
-            # 然后拿三个出来。或者四个？三个吧
-                # 然后根据威胁情况看后面往哪里去。
-            for i in range(3):
-                neighbor_field_list_selected.append(neighbor_pos_list[index_list[i]])
-            pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-            
+            neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
+            neighbor_pos_list_selected = neighbor_field_array_sorted[:,0]
+            # change to int, or there would be type error in map.py
+            neighbor_pos_list_selected = neighbor_pos_list_selected.astype(int)
+            # using np.int64 would cause trouble.
+            neighbor_pos_list_selected = neighbor_pos_list_selected.tolist()
+            # 然后根据威胁情况看后面往哪里去。
+            a1 =10 
+            if neighbor_pos_list_selected[5] ==0:
+                # which means all are zero
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+            elif neighbor_pos_list_selected[5]<a1 :
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:6], vector_xy)
+            elif neighbor_pos_list_selected[3]<a1 :
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
+            elif neighbor_pos_list_selected[0]>a1:
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+            else:
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
             # 选出来之后就过去呗。
             self._move_action(attacker_ID, pos_next)
         
