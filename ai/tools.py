@@ -113,10 +113,6 @@ def get_pos_average(units):
         return pos_ave
 
 
-class BopType:
-    Infantry, Vehicle, Aircraft = range(1, 4)
-
-
 class ActionType:
     (
         Move,
@@ -144,7 +140,16 @@ class ActionType:
 
 class MoveType:
     Maneuver, March, Walk, Fly = range(4)
-
+class BopSubType:
+    """
+    sub_type: 细分类型 坦克 0/  战车1 / 人员2 / 炮兵3 / 无人战车4 / 无人机5 / 直升机6 / 巡飞弹7 / 运输直升机8 / 侦察型战车9 / 炮兵校射雷达车10 / 人员工事11 / 车辆工事12 / 布雷车13 / 扫雷车14 / 防空高炮15 / 便携防空导弹排16 / 车载防空导弹车17
+    TODO: 增加皮卡车，天极侦察算子，人员隐蔽工事
+    """
+    Tank, Chariot, Infantry, Artillery, UCV, UAV, Helicopter, PM, TransportHelicopter, ScoutVehicle, ArtilleryRadar, PersonnelFortification, VehicleFortification, \
+        MineLayer, MineSweeper, AntiAircraftGun, AntiAircraftMissilePlatton, AntiAircraftMissileVehicle, Pika, SkybasedRecon, HideFortification= list(range(0, 21))
+    
+class BopType:
+    Infantry, Vehicle, Aircraft, Fort = range(1, 5)
 
 if __name__ == "__main__":
     # these for tool test
