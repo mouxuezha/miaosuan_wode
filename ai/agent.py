@@ -428,6 +428,40 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)            
             pass
 
+    def UAV_patrol2(self,unscouted_input):
+        # 这个会覆盖给无人机的其他命令，优先执行“探索未知区域”，这个依赖于从尚霖那里抄的通视那一系列东西。
+        # 不要重复下命令，不然就把时间都刷没了
+        # 保持一定的灵活性，别啥都用成员变量
+
+        # 先把UAV取出来
+        UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
+        # UAV_unit = UAV_units[0] # 反正只有一个无人机，就别骗自己了。
+
+        # 然后找一个离得最近的没有探索的区域。
+        area_unscouted = list(self.unscouted)
+        geshu = len(area_unscouted)
+        jvli_list = [] 
+        if geshu > 0:
+            # 说明有没探索的区域。
+            for i in range(geshu):
+                # 然后把所有的距离都算一遍
+                pos_single = area_unscouted[i]
+                juli = self.distance(pos_single, UAV_unit["cur_hex"])
+                jvli_list.append(juli)
+            # 然后找到离得最近的那个
+            min_jvli = min(jvli_list)
+            min_jvli_index = jvli_list.index(min_jvli)
+            selected_pos = area_unscouted[min_jvli_index]
+        else:
+            # 要是失效了就还是飞去目标点好了。
+            # 原则上应该整一个“要是失效了就飞个之字形过去”之类的说法。
+            selected_pos= self.target_pos
+        # 然后设定状态就开始过去了。
+        for UAV_unit in UAV_units:
+            self.set_move_and_attack(UAV_unit,selected_pos,model="force")
+
+
+
     def IFV_transport(self,model="on"):
         # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
         # on 就是上车，off就是下车。
@@ -736,7 +770,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.group_A(UAV_units,target_pos)
         return 
 
-    def step_cross_fire_test(self):
+    def step_cross_fire2(self):
         # this is to test group_A2.
         target_pos = self.target_pos
         units=self.status["operators"]           
@@ -803,6 +837,79 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.UAV_patrol(target_pos)
             # kaibai is fine.
             self.group_A(UAV_units,target_pos)
+        return 
+
+    def step_cross_fire_test(self):
+        # this is to test group_A2.
+        target_pos = self.target_pos
+        units=self.status["operators"]           
+        IFV_units = self.get_IFV_units()
+        infantry_units = self.get_infantry_units()
+        UAV_units = self.get_UAV_units()
+        tank_units = self.get_tank_units()
+        # 这个是获取别的units用来准备一开始就解聚
+        # others_units = list(set(units) - set(IFV_units) - set(infantry_units) - set(UAV_units))
+        others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+
+        flag_on,flag_off = self.IFV_transport_check()
+        jieju_flag2 = self.jieju_check(model="part", units=IFV_units)
+
+        if flag_on==False:
+            # 如果刚开始且没上车，那就先上车
+            self.IFV_transport(model="on")
+        elif flag_on==True and self.num<800:
+            # self.IFV_transport(model="off") # this is for test
+            if jieju_flag2==False:
+                for unit in IFV_units:
+                    self.set_jieju(unit)
+
+        jieju_flag = self.jieju_check(model="part", units=others_units)
+        # if self.num<500 and jieju_flag==False:
+        if jieju_flag==False and self.num<800:
+            # 那就是没解聚完，那就继续解聚。
+            for unit in others_units:
+                self.set_jieju(unit)
+        
+        # F2A.
+        # if jieju_flag == True and self.num<800:
+        if jieju_flag == True and jieju_flag2==True:
+            if self.num < 200:
+                model="normal"
+            else:
+                model="force"
+            # self.group_A(others_units,target_pos,model=model)
+            self.group_A2(others_units,IFV_units)
+        elif self.num>300:
+            # self.group_A(others_units,target_pos,model="force")
+            self.group_A2(others_units,IFV_units)
+
+        if jieju_flag2 == True:
+            # self.group_A(IFV_units,target_pos,model="force")
+            # self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
+            self.list_A(IFV_units,target_pos)
+        if self.num>300:
+            self.list_A(IFV_units,target_pos)
+
+        # if arrived, then juhe.
+        if self.num>800:
+            self.final_juhe(tank_units)
+            self.final_juhe(IFV_units)
+
+        # if self.num>1000:
+        #     # 最后一波了，直接F2A了
+        #     self.F2A(target_pos)
+        #     pass # disabled for tiaoshi
+        
+        if (self.num % 100==0) and (self.num>-200) and (self.num<2201):
+            # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
+            # deal with UAV.这里面是带骑脸目标、停车、引导打击等逻辑的，但是好像不是太适合现在这个场景。
+            # self.UAV_patrol(target_pos)
+            
+            # kaibai is fine.逃避可耻但有用
+            # self.group_A(UAV_units,target_pos)
+
+            # 抢救一下，无人机给一些新的说法
+            self.UAV_patrol2(self.unscouted)
         return 
 
     def step_scout(self):
