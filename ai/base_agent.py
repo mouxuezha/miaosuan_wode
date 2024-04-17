@@ -1272,6 +1272,10 @@ class BaseAgent(ABC):
         # 不对，这可恶的六角格，算不了矢量场啊好像。
         # 总之这个放在GoStep里。
 
+        # 需要新加一个东西来计算can_shoot的计算结果，不然好多点都会重复计算，就比较傻逼了。
+        if self.num <2:
+            self.calculated_can_shoot = {} # {pos_int:flag_can_shoot}
+
         # 选定所有单位周围的两个格子，然后去重
         distance_start = 0 
         distance_end = 2 
@@ -1328,19 +1332,29 @@ class BaseAgent(ABC):
                 # 有己方单位存活，认为那附近安全一点。负的威胁度
                 field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
 
-        #  TODO: using tongshi to modify the field further.
-        for unit in self.detected_state:
-            # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
-            enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
-            enemy_type = unit["sub_type"]
-            my_type = 2 # 直接用车辆了，
-            # 调地图，看是不是会被打到。
-            flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
-            if flag_can_shoot>0:
-                # field_value = field_value + a1*100 / (a2 + jvli)
-                # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
-                field_value = field_value + a1*100 / (a2 )
-            
+        #  using tongshi to modify the field further.
+        # 如果已经算过了，就别重新算一遍这个了。
+        if pos_single in self.calculated_can_shoot:
+            flag_can_shoot = self.calculated_can_shoot[pos_single]
+        else:
+            # 要是没算过那再算一下。
+            flag_can_shoot = 0 
+            for unit in self.detected_state:
+                # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
+                enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
+                enemy_type = unit["sub_type"]
+                my_type = 2 # 直接用车辆了，
+                # 调地图，看是不是会被打到。
+                flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+                if flag_can_shoot>0:
+                    break
+            # 更新到存的那个里面。原则上已经可以少算
+            self.calculated_can_shoot[pos_single] = flag_can_shoot
+
+        if flag_can_shoot>0:
+            # field_value = field_value + a1*100 / (a2 + jvli)
+            # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
+            field_value = field_value + a1*100 / (a2 )            
         return field_value
 
     def update_detectinfo(self, detectinfo):
