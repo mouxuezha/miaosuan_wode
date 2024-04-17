@@ -134,6 +134,7 @@ class record_result():
         self.all_games = []
         self.time_list = [] 
         self.fupan_names = [] 
+        self.begin = time.time()
 
     def record_config(self, config_str:str):
         self.config_str = config_str
@@ -144,7 +145,9 @@ class record_result():
         self.all_games.append(all_states)
         self.fupan_names.append(zip_name)
         this_moment = time.time()
-        self.time_list.append(this_moment - self.begin)
+        time_consumption = this_moment - self.begin
+        print("time_comsumption:",time_consumption)
+        self.time_list.append(time_consumption)
         self.begin = this_moment
         
     def get_result_all(self,all_games):
