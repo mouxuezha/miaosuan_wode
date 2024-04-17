@@ -435,8 +435,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
-                if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
-                    self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)            
+                # if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
+                #     # self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)
+                #     self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)    
+                self.set_move_and_attack(UAV_unit["obj_id"],target_pos=target_pos_random,model="force")        
             pass
 
     def UAV_patrol2(self,unscouted_input):
