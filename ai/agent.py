@@ -446,7 +446,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # 先把UAV取出来
         UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
-        # UAV_unit = UAV_units[0] # 反正只有一个无人机，就别骗自己了。
+        UAV_unit = UAV_units[0] # 反正只有一个无人机，就别骗自己了。
 
         # 然后找一个离得最近的没有探索的区域。
         area_unscouted = list(self.unscouted)
@@ -468,8 +468,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 原则上应该整一个“要是失效了就飞个之字形过去”之类的说法。
             selected_pos= self.target_pos
         # 然后设定状态就开始过去了。
-        for UAV_unit in UAV_units:
-            self.set_move_and_attack(UAV_unit,selected_pos,model="force")
+        self.set_move_and_attack(UAV_unit,selected_pos,model="force")
 
 
 
