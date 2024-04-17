@@ -14,12 +14,25 @@ import copy,random
 import numpy as np
 from .tools import *
 from .base_agent import BaseAgent
-
+from typing import List , Dict, Mapping, Tuple
+from time import time 
+from functools import wraps
 
 class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改名字。
     def __init__(self):
         super(Agent,self).__init__()
         # abstract_state is useful
+        #@szh0404 添加记录fort 状态的
+        self.fort_assignments = {}
+        #@szh0404 添加记录算子目的地 说法是用movepath 就不用 
+        self.ops_destination = {}
+        self.troop_stage = {}
+        self.troop_defend_target = {}
+        self.chariot_stage = {}
+        self.chariot_defend_target = {}
+        self.tank_stage = {}
+        self.tank_defend_target = {}
+        self.prepare_to_occupy  = {}
 
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
@@ -943,36 +956,1283 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.task_executors[task["type"]].execute(task, self)
         return self.actions   
     
+    ###################### defend  ############################    
+    @time_decorator
     def step_defend(self):
-        # unfinished yet.
+        # # unfinished yet.
         
-        # 先把场景目标点在哪读出来
-        defend_pos = [0,0,0] # three in hex form
-        # get the target first.
-        if self.num <2:
-            defend_pos = self.get_target_defend()
-            self.defend_pos = defend_pos
-        else:
-            defend_pos = self.defend_pos    
+        # # 先把场景目标点在哪读出来
+        # defend_pos = [0,0,0] # three in hex form
+        # # get the target first.
+        # if self.num <2:
+        #     defend_pos = self.get_target_defend()
+        #     self.defend_pos = defend_pos
+        # else:
+        #     defend_pos = self.defend_pos    
 
-        # 经典分兵编队
-        units=self.status["operators"]           
-        IFV_units = self.get_IFV_units()
-        infantry_units = self.get_infantry_units()
-        UAV_units = self.get_UAV_units()
-        others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+        # # 经典分兵编队
+        # units=self.status["operators"]           
+        # IFV_units = self.get_IFV_units()
+        # infantry_units = self.get_infantry_units()
+        # UAV_units = self.get_UAV_units()
+        # others_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
 
-        # 怎么判断A到了呢？姑且可以是全停下就算是A到了。或者是直接步数
-        jieju_flag = self.jieju_check(model="part", units=others_units)
-        if self.num<100 and jieju_flag==False:
-            # 那就是没解聚完，那就继续解聚。
-            for unit in (others_units+infantry_units+IFV_units):
-                self.set_jieju(unit)
-        else:
-            index_chong = round(((self.num+101) % 600) / 200 ) - 1  # 这个就应该是0,1,2
+        # # 怎么判断A到了呢？姑且可以是全停下就算是A到了。或者是直接步数
+        # jieju_flag = self.jieju_check(model="part", units=others_units)
+        # if self.num<100 and jieju_flag==False:
+        #     # 那就是没解聚完，那就继续解聚。
+        #     for unit in (others_units+infantry_units+IFV_units):
+        #         self.set_jieju(unit)
+        # else:
+        #     index_chong = round(((self.num+101) % 600) / 200 ) - 1  # 这个就应该是0,1,2
             
-            self.group_A((others_units+UAV_units), defend_pos[index_chong])
-            for unit in IFV_units+infantry_units:
-                self.set_open_fire(unit)
+        #     self.group_A((others_units+UAV_units), defend_pos[index_chong])
+        #     for unit in IFV_units+infantry_units:
+        #         self.set_open_fire(unit)
 
-        print("step_defend: unfinished yet.")
+        # print("step_defend: unfinished yet.")
+
+        #@szh 0404 添加fort状态
+        self.fort_assignments = {op["obj_id"]: op["entering_fort_partner"]+op["fort_passengers"] for op in self.observation["operators"] if op["type"]==BopType.Fort}
+        #@szh 0404 更新trooop stage 和 chariot stage
+        chariots = [op for op in self.observation["operators"] if op["type"]==BopType.Vehicle and op["color"] == self.color]
+        troops =   [op for op in self.observation["operators"] if op["sub_type"]==BopSubType.Infantry and op["color"] == self.color]
+        tanks =    [op for op in self.observation["operators"] if op["sub_type"]==BopSubType.Tank and op["color"] == self.color]
+        ops = self.get_defend_infantry_units() + self.get_defend_armorcar_units() + self.get_defend_tank_units()
+        ops_dests = [op for op in ops if op["color"] == self.color]
+        
+        for op in chariots:
+            if op["obj_id"] not in self.chariot_stage.keys():
+                self.chariot_stage[ op["obj_id"] ] =""    # 对应可能是新解聚的情况
+                # self._defend_jieju_and_move( op["obj_id"] )
+        for op in troops:
+            if op["obj_id"] not in self.troop_stage.keys():
+                self.troop_stage[ op["obj_id"] ]  =""
+                self._defend_jieju_and_move( op["obj_id"] )
+                
+        for op in tanks:
+            if op["obj_id"] not in self.tank_stage.keys():
+                self.tank_stage[ op["obj_id"] ]  =""
+                # self._defend_jieju_and_move( op["obj_id"] )
+        for op in ops_dests:
+            if op["obj_id"] not in self.ops_destination.keys():
+                self.ops_destination[ op["obj_id"]]  = ""
+        self.reset_occupy_state()                         # 重新看有没有空点
+        self.update_prepare_to_occupy()
+        
+        if self.num <= 900:
+            for troop in self.get_defend_infantry_units():
+                if self.num <=2:
+                    closest_city = min(
+                        self.observation["cities"],
+                        key=lambda city: self.distance(troop["cur_hex"], city["coord"]),
+                    )
+                    self.ops_destination[ troop["cur_hex"] ]  =  closest_city["coord"]
+                self.defend_BT_Troop(troop["obj_id"])
+            for chariot in self.get_defend_armorcar_units():
+                self.defend_BT_Chariot(chariot["obj_id"])
+            for tank in self.get_defend_tank_units():
+                self.defend_BT_Tank(tank["obj_id"])
+        else:
+            self.defend_goto_cities()
+
+
+    #@szh 0404 所有算子执行最终夺控
+    def defend_goto_cities(self):
+        our_units = self.get_defend_infantry_units() + self.get_defend_armorcar_units() + self.get_defend_tank_units()
+        for u in our_units:
+            closest_city = min(
+                self.observation["cities"],
+                key=lambda city: self.distance(u["cur_hex"], city["coord"])
+            )
+            if u["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
+                self.gen_occupy(u["obj_id"])
+            if self.distance(u["cur_hex"], closest_city["coord"]) != 0:
+                self._move_action(u["obj_id"], closest_city["coord"])
+            else:
+                self.__tank_handle_open_fire(u["obj_id"])
+        
+        return 
+
+
+
+    #@szh 0404 添加转化为二级冲锋的
+    def gen_change_state(self, obj_id, chongfeng):
+        """Generate change state action with some probability."""
+        bop = self.get_bop(obj_id)
+        if not bop:
+            return
+        # 步兵正常机动切换成二级冲锋
+        if bop["sub_type"] == 2  and chongfeng == 2 :
+            target_state = 3
+            act_change_state = {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.ChangeState,
+                "target_state": target_state,
+            }
+            self._action_check_and_append(act_change_state)
+            return
+        elif bop["sub_type"] == 2  and chongfeng == 1 :
+            target_state = 2
+            act_change_state =  {
+                "actor": self.seat,
+                "obj_id": obj_id,
+                "type": ActionType.ChangeState,
+                "target_state": target_state,
+            }
+            self._action_check_and_append(act_change_state)
+            return 
+        elif bop["sub_type"] == 2  and chongfeng == 0 :
+            act_stop =  {
+                    "actor": self.seat,
+                    "obj_id": obj_id,
+                    "type": ActionType.StopMove,
+                }
+            self._action_check_and_append(act_stop)
+            return 
+        
+    #@szh 0404 抄写解聚的
+    def gen_fork(self, obj_id):
+        return {"actor": self.seat, "obj_id": obj_id, "type": ActionType.Fork}
+
+    #@szh 0404 抄写的进夺控点的
+    def gen_enter_fort(self, obj_id, target_fort):
+        # 敌方算子位置
+        # enemy_hexes = [o["cur_hex"] for o in self.observation["operators"] if o["color"] != self.color]
+        # city_hexes =  [city["coord"] for city in self.observation["cities"] if city["flag"] != self.color]
+        # city_hexes_no_op = []
+        # # 没有敌方算子的夺控点
+        # if city_hexes:
+        #     for city_hex in city_hexes:
+        #         neighbours = self.map.get_neighbors(city_hex)
+        #         if not set(neighbours) & set(enemy_hexes):
+        #             city_hexes_no_op.append(city_hex)
+        # if not city_hexes_no_op:
+            #target_fort = random.choice(candidate)["target_obj_id"]
+        self.fort_assignments[target_fort].append(obj_id)
+        act_enter_fort =  {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.EnterFort,
+            "target_obj_id": target_fort,
+        }
+        self._action_check_and_append(act_enter_fort)
+        return act_enter_fort
+
+    #@szh 0328 直接调用 select_by_type 
+    def get_defend_infantry_units(self)->List[Dict]:
+        #  返回unit 对象 list 形式
+        infops = self.select_by_type(self.status["operators"],key="sub_type",value=2)
+        return [op for op in infops if op["color"] ==  self.color]
+    def get_defend_tank_units(self):
+         #  返回unit 对象 list 形式
+        tankops = self.select_by_type(self.status["operators"],key="sub_type",value=0)
+        return  [op for op in tankops if op["color"] ==  self.color]
+    def get_defend_armorcar_units(self):
+         #  返回unit 对象 list 形式
+        armorcar_ops = self.select_by_type(self.status["operators"],key="sub_type",value=1)
+        return   [op for op in armorcar_ops if op["color"] ==  self.color]
+
+    #@szh 0328 规划战斗工事 只有人员的工事
+    def get_fightingbase_units(self)->List[Dict]:
+         #  返回unit 对象 list 形式
+        return self.select_by_type(self.status["operators"],key="sub_type",value=11)
+    def get_hiddingbase_units(self)->List[Dict]:
+        return self.select_by_type(self.status["operators"],key="sub_type",value=20)
+    #@szh 0328 写一个夺控的策略
+
+
+    #@szh 0329 补充获得敌方detect 函数
+    def defend_enemy_hex(self)->List[int]:
+        return [op["cur_hex"] for op in self.status["operators"] if op["color"] != self.color]
+    def defend_enemy_info(self)->List[Dict]:
+        return [op for op in self.status["operators"] if op["color"] != self.color]
+
+
+    #@szh 0329 通视情况 这里用see enemy bop ids 可以查看所有对方
+    def defend_see_enemy_bop_ids(self, unit_id : str)-> List[str]:
+        detected_enemy_unit = []
+        unit = self.get_bop(unit)
+        if "see_enemy_bop_ids" in unit.keys():
+            detected_enemy_unit = unit["see_enemy_bop_ids"]
+        return detected_enemy_unit
+
+    #@szh 0402 步兵班找最近的工事 注意这个函数不要随意调用，在调用时
+    #需要进一步想一下怎么去安排步兵班
+    #严格来说步兵班进入工事应该根据场景去自动分配 不要在这里写
+    def defend_troop_find_nearest_fort(self,
+        troop_id:str,
+    )->str:
+        troop_unit = self.get_bop(troop_id)
+        if troop_unit is None or troop_unit["sub_type"] != 2 or troop_unit["in_fort"] is True:
+            return None
+        our_hidding_fort_list = self.get_hiddingbase_units()
+        our_fighting_fort_list = self.get_fightingbase_units()
+        # 这里注意一共最多两个步兵班所以只选最近的两个
+        fort_list = our_fighting_fort_list + our_hidding_fort_list
+        fort_list = list(set(fort_list))
+        min_dis = 1000
+        nearest_fort  = None
+        for fort_info  in fort_list:
+            fort_cur_hex = fort_info["cur_hex"]
+            dis_ = self.distance(fort_cur_hex, troop_unit["cur_hex"])
+            if dis_ < min_dis: 
+                min_dis = dis_
+                nearest_fort = fort_info
+        return nearest_fort
+    
+            
+            
+             
+        
+
+    
+
+    #@szh 0329 detect 信息 再做个filter 根据地点选择一定范围内的敌方算子 
+    def defend_detect_enemy_by_scope(self, 
+        center_pos: int,
+        filter_scope: int,
+        mode: str =  "normal"
+        )->List[Dict]:    
+        """
+         后续扩展哪些类型的敌方算子要加入进来  例如 炮弹等有明确目标的就不必考虑 
+         在defend 场景下只需要考虑 坦克 步兵  战车
+        """
+        detected_units_state = self.get_detected_state(observation) # 返回的是 list of units
+        # detected_units_state : 一个包括对方所有算子的list  基于此 选择筛选一定范围的敌方算子
+        detect_unit_in_scope = []
+        for detect_unit in detected_units_state:
+            detect_unit_id  = detect_unit["obj_id"] 
+            detect_unit_pos = self.get_pos(detect_unit_id)
+            if self.distance(center_pos , detect_unit_pos) < filter_scope:
+                if mode == "normal":
+                    detect_unit_in_scope.append(detect_unit_id)
+        return detect_unit_in_scope
+
+    #@szh0328 防御点坐标    
+    def get_defend_cities_pos(self):
+        observation = self.status
+        if "cities" not in observation.keys():
+            return []
+        city_coord =  [city["coord"] for city in self.observation["cities"]]
+        return city_coord
+    
+    # 防御点信息
+    #@szh0328 包括 分值哈的
+    def get_defend_cities_info(self):
+        observation = self.status
+        if "cities" not in observation.keys():
+            return []
+        city_info = [city for city in self.observation["cities"]]
+        return city_info
+            
+    #@szh0328 步兵班进入工事
+    #@szh0403 开火调用——open attack fire
+    def defend_gen_shoot(self): 
+        pass
+    
+    #@szh0402 找夺控点距离为1范围内的格子编号 作为夺控要点
+    def defend_get_key_point_around_fort(self,center_pos:int, mode: str)->List[int]:
+        distance_min, distance_max = 1,2
+        if mode == "key": 
+            distance_min, distance_max = 1,2    
+        elif mode == "youji":
+            distance_min, distance_max = 2,3
+        return list(self.map.get_grid_distance(center_pos, distance_min,distance_max))
+    
+    #@szh0404 根据敌方位置   把夺控点“后方”的我方游击点位置筛选出来
+    def defend_filter_key_point_by_enemy_pos(
+        self, 
+        center_pos: int,                  #  参考点  夺控点
+        key_point_candidate: List[int],   # list of cur_hex 
+        filter_mode:str
+    )->List[int]:
+        # filter_mode ==  "enemy"  用敌方位置去筛选  找距离
+        # filter_mode ==  "index"  用地图编号去筛选
+        # filter_mode ==  "mix"    结合index 和  enemy pos
+        # filter_mode ==  "none" 
+        if filter_mode == "enemy": 
+            destination = key_point_candidate 
+            enemypos_list = self.defend_enemy_hex()  #
+            if len(enemypos_list) > 0:
+                min_dis_ = 10000
+                min_hex_ = 0
+                for enemypos in enemypos_list:
+                    if self.distance(enemypos , center_pos) < min_dis_ :
+                        min_dis_ = self.distance(enemypos , center_pos)
+                        min_hex_ = enemypos
+                destination =  [p for p in key_point_candidate if self.distance(p, min_hex_) > min_dis_ ]
+                if destination is None or len(destination) == 0:
+                    destination =   [center_pos]
+            elif len(enemypos_list) ==0:
+                destination = key_point_candidate+[center_pos]
+            return destination
+        if filter_mode == "index" and len(self.defend_enemy_hex()) > 0:
+            # 这里可以再 思考一下具体怎么用
+            # for p in key_point_candidate:
+            #     if (p% 100) > center_pos%100 or \
+            #         (p/100) == center_pos/100 and 
+            destination =  [p for p in key_point_candidate if (p% 100) > center_pos%100]
+            if destination is None or len(destination) == 0:
+                destination =   [center_pos]
+            return destination
+        if filter_mode == "none" and len(self.defend_enemy_hex()) > 0:
+            return key_point_candidate
+
+
+    
+    
+    #@szh0404  将点按照特定要求排序  如高程 地形等 
+    def defend_sort_point_by_type(self,
+        key_point_candidate: List[int],   # list of cur_hex 
+        sort_type:str # eg elev                            
+    )-> List[int]:
+        if key_point_candidate is None:
+            return []
+        if len(key_point_candidate) == 0:
+            return []
+        if sort_type == "elev":            # 根据高程排序
+            return sorted(key_point_candidate, \
+            key = lambda x:self.map_data[x//100][x%100]["elev"] , reverse= True)
+
+    #@szh 0404 将点进行筛选 只有地形为0，1，2 的可以
+    def defend_filter_key_point_by_scope(
+        self,
+        key_point_candidate: List[int],   # list of cur_hex 
+    )->List[int]:
+        return [c for c in key_point_candidate if self.map.basic[c // 100][c % 100]["cond"] in [0,1,2] ]
+
+    #@szh0402 步兵班的行为树
+    @time_decorator
+    def defend_BT_Troop(self, obj_id):
+        #设几个状态转换的量 这里得是每个id 都要
+        bop_troop = self.get_bop(obj_id)
+        # self.troop_stage[obj_id]= "start"
+        if self.troop_stage[obj_id] != "fire":
+            # 新场景下直接先解聚
+            # 得判断一下是不是在forking 是的话直接退出
+            closest_city = min(
+                self.observation["cities"],
+                key=lambda city: self.distance(bop_troop["cur_hex"], city["coord"]),
+             )
+            if bop_troop["cur_hex"] == closest_city["coord"]:
+                    self.gen_occupy(obj_id)
+            self.ops_destination["obj_id"] =  closest_city["coord"]
+            if self.num <=120:
+                if self.color != closest_city["flag"] :
+                    self.ops_destination[obj_id] = closest_city["coord"]
+                    self.gen_change_state(obj_id, 2)
+                    self._move_action( obj_id,  self.ops_destination[obj_id] )
+                    return
+                # if self.color == closest_city["flag"] and bop_troop["cur_hex"] == closest_city["coord"] and self.troop_stage[obj_id] == "":
+                #     self.gen_change_state(obj_id, 0)
+                          
+            if bop_troop["forking"]:
+                return 
+            act, _jieju_flag_done =  self._jieju_action(obj_id)
+            if self.num <= 120 and bop_troop["move_to_stop_remain_time"]>0 :
+                _jieju_flag_done = True
+
+            if _jieju_flag_done == False: # 未执行解聚直接进入到
+                self.defend_troop_start_stage_zhandian(obj_id)
+            
+        elif self.troop_stage[obj_id] == "fire":
+            self.defend_troop_fire_stage_zhandian(obj_id)
+            
+    @time_decorator    
+    def defend_BT_Chariot(self,obj_id):
+        bop_chariot = self.get_bop(obj_id)
+        if self.chariot_stage[obj_id] == "":
+            # 战车也是先解聚
+            if bop_chariot["forking"]:
+                return 
+            self.defend_chariot_start_stage_zhandian(obj_id)
+                
+        elif self.chariot_stage[obj_id] == "fire":
+            self.defend_chariot_fire_stage_zhandian(obj_id)
+            
+    @time_decorator
+    def defend_BT_Tank(self, obj_id):
+        bop_tank =self.get_bop(obj_id)
+        if self.tank_stage[obj_id] == "":
+            if bop_tank["forking"]:
+                return 
+            self.defend_tank_start_stage_zhandian(obj_id)
+                
+        elif self.tank_stage[obj_id] == "fire":
+            self.defend_tank_fire_stage_zhandian(obj_id)
+            pass    
+
+    def defend_key_point_filter_and_sort(self, 
+          key_point_candidates: List,
+          closest_city:Dict,
+          filter_mode:str,
+          sort_mode:str
+        )-> List[int]:
+        after_filter_key_point = False
+        if len(self.defend_filter_key_point_by_scope(key_point_candidates)):
+            key_point_candidates = self.defend_filter_key_point_by_scope(key_point_candidates)
+            key_point_candidates =  self.defend_filter_key_point_by_enemy_pos(\
+                closest_city["coord"], key_point_candidates,\
+                filter_mode= filter_mode
+                )
+            key_point_candidates = self.defend_sort_point_by_type(\
+                key_point_candidates, 
+                sort_mode
+                )   
+            if len(key_point_candidates) > 0 :
+                after_filter_key_point = True  
+        if after_filter_key_point == False:
+            return []
+        return key_point_candidates
+        
+    #@szh 0404 针对重型战车找最优的保护夺控点的
+    def defend_chariot_find_best_cover_points(self, center_pos: int, dis_min:int, dis_max:int)->List[int]:
+        """
+             围绕center——pos 找距离为dis 且能够通视最多的点
+             对于重型战车 选择距离夺控点 4-6 这个位置的
+        """
+        best_cover_points = []
+        neighbor_in_dis = self.map.get_grid_distance(center_pos, dis_min, dis_max)
+        # 筛地形
+        filtered_by_scope = self.defend_filter_key_point_by_scope(neighbor_in_dis)
+        # 筛位置  夺控点后方的
+        enemy_detected = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        if len(enemy_detected) == 0:
+            # 如果没有发现敌方算子 则无法判断敌方位置 那就寄了  则直接返回一个夺控点
+            return [center_pos]
+        #closest_enemy, min_dis = self.get_bop_closest(bop, enemy_detected)
+        filter_by_pos = self.defend_filter_key_point_by_enemy_pos(
+            center_pos,
+            filtered_by_scope,
+            filter_mode = "enemy" 
+        )
+        flag_has_forest_nearby = False
+        # 1.先找周围一定范围有没有树林啥的 有的话去一个集合  再根据高程排序
+        # 在 4-7 的一个范围内
+        forest_hex = [ p for p in filter_by_pos if self.map.basic[p // 100][p % 100]["cond"] in [1] ]
+        if len(forest_hex) != 0:
+            flag_has_forest_nearby = True
+        if flag_has_forest_nearby:
+            forest_hex.sort(key = lambda p : self.map.basic[p // 100][p % 100]["elev"] , reverse= True)
+            return forest_hex
+        # 2.没有树林则按高程排序 
+        filter_by_pos.sort(key = lambda p : self.map.basic[p // 100][p % 100]["elev"] , reverse= True)
+        return filter_by_pos  
+        # -----------------下面的暂时不用-----------------------
+        # 找通视觉点最多的 cover point   选择8格这个通视量
+        dis_max_cover = dis_max      # 8 格左右 
+        neighbor_to_cover_can_see = self.map.get_grid_distance(center_pos, 0, dis_max_cover)
+        cover_points_around_city = self.defend_filter_key_point_by_enemy_pos(
+            center_pos,
+            neighbor_to_cover_can_see,
+            filter_mode = "enemy"
+        )
+        cover_points_filter_by_pos_by_enemy = self.defend_filter_key_point_by_enemy_pos(
+            center_pos,
+            cover_points_around_city,
+            filter_mode = "enemy" 
+        )
+        # 选择的都是夺控点前面的点
+        cover_points_test_can_see = list( set(cover_points_around_city) -  set(cover_points_filter_by_pos_by_enemy))
+        # 逐个点检测同时情况
+        # 统计tongshi点个数
+        
+    #@szh 0404 执行夺控指令
+    def gen_occupy(self, obj_id):
+        action_gen = {
+            "actor": self.seat,
+            "obj_id": obj_id,
+            "type": ActionType.Occupy
+            }
+            # self.act.append(action_gen)
+        self._action_check_and_append(action_gen)
+        
+    
+    #@szh 0404 重型战车的部署策略
+    @time_decorator
+    def defend_chariot_start_stage_zhandian(self, obj_id):
+        #先解聚
+        destination = None
+        bop = self.get_bop(obj_id)  
+        if bop["speed"] != 0:  # 有未完成的机动
+            return
+        if self.ops_destination[obj_id] == bop["cur_hex"]:
+            self.ops_destination[obj_id] = ""
+        # self.__handle_open_fire(obj_id)           # 先开火打一发
+        if self.ops_destination[obj_id] != "" and bop["cur_hex"] ==  self.ops_destination[obj_id]:
+            self.chariot_stage[obj_id] = "fire"
+            return  
+        if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
+            self._move_action(obj_id, self.ops_destination[obj_id])
+            return
+        # 原则上来说一定有closest
+        if bop["cur_hex"]  in  [c["coord"] for c in self.observation["cities"]]:
+            self.gen_occupy(obj_id)
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"])
+        )
+        if closest_city["flag"] != self.color: # 先占点
+            self.ops_destination[obj_id] = closest_city["coord"]
+            self._move_action(obj_id, self.ops_destination[obj_id])
+            if bop["cur_hex"] == closest_city["coord"]:
+                self.gen_occupy(obj_id)
+        
+         # 判断是否为机动算子
+        # 判断夺控点周围有没有我方算子
+        if self.color == closest_city["flag"]:
+            tar = self.defend_check_nearby_enemy(obj_id)
+            if len(tar) > 0:
+                self._move_action(obj_id, tar[0])
+                return
+        our_troop_in_neighbor = [
+            op for op in self.get_defend_infantry_units() if self.distance(op["cur_hex"],closest_city["coord"]) \
+            <=1 
+        ]          
+        our_units = self.get_defend_infantry_units() + self.get_defend_armorcar_units() + self.get_defend_tank_units()
+        destination = None
+        # 这部分加上 去看一下为啥会停下来
+        # tar = self.defend_check_nearby_enemy(obj_id)
+        # if len(tar) > 0:
+        #     self._move_action(obj_id, tar[0])
+        #     return
+        if bop["speed"] == 0 or self.ops_destination[obj_id] == "":  #
+            # 判断和敌方单位距离
+            pts_candidates = self.map.get_grid_distance(\
+                bop["cur_hex"], 2, 4
+            )
+            pts_candidates = self.defend_filter_key_point_by_scope(pts_candidates)
+            pts_candidates = self.defend_filter_key_point_by_enemy_pos(
+                bop["cur_hex"],
+                pts_candidates, filter_mode="enemy"
+            )
+            if pts_candidates is None:
+                pts_candidates = list(self.map.get_grid_distance(\
+                bop["cur_hex"], 1, 4
+                ))
+            target_pos = random.choice(pts_candidates)
+            self._move_action(obj_id, target_pos)
+            self.ops_destination[obj_id] = target_pos
+            self.chariot_stage[obj_id] =  "fire"
+        
+        if len(our_troop_in_neighbor) > 0:       #  附近有步兵班转为机动算子
+            # 先找一个没有守点夺控点
+            flag_move_to_another_city = False
+            for city in self.observation["cities"]:
+                if  city["coord"] == closest_city["coord"] or len(self.prepare_to_occupy[city["coord"]])>=1:
+                    continue
+                defend_force = [ op for op in our_units if self.distance(op["cur_hex"] , city["coord"]) <=2 ]
+                if len(defend_force) == 0:
+                    # 没有守备力量的夺控点  
+                    if len(self.defend_count_current_pos_enemy(city["coord"], 3)) >=2:
+                        destination = self.defend_chariot_find_best_cover_points(
+                            city["coord"], 4 , 7
+                        )
+                        if len(destination) == 0:
+                            return #  4-7   找不到就别玩
+                        flag_move_to_another_city = True 
+                    else: # 进点
+                        destination = [city["coord"]]
+                        flag_move_to_another_city = True 
+                    self.ops_destination[obj_id] = destination[0]
+                    self._move_action(obj_id, destination[0])
+                    break
+            if flag_move_to_another_city:
+                self.chariot_stage[obj_id] = "fire"
+            else:
+                destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
+                if len(destination) == 0:
+                    return 
+                self.ops_destination[obj_id] = destination[0]
+                self._move_action(obj_id, self.ops_destination[obj_id])
+                return 
+        # 暂时还在守这个点
+        else:
+            # 先占点
+            if self.color == closest_city["flag"]:      # 隐蔽
+
+                if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2) )>= 2:   
+                    destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
+                else:
+                    destination =  self.defend_chariot_find_best_cover_points(city["coord"], 0, 1)
+                if len(destination) == 0:
+                    return 
+            
+            else:
+                # 判断当前 夺控点周围敌方算子数量
+                if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2) ) >=2 :
+                    destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
+                else:
+                    destination =  [ closest_city["coord"] ]
+                    self.prepare_to_occupy[ closest_city["coord"]  ].append(obj_id)
+            self.ops_destination[obj_id] = destination[0]
+            self._move_action(obj_id, self.ops_destination[obj_id])
+            self.chariot_stage[obj_id] = "fire"
+            return 
+        return 
+
+    
+    #@szh0405 重写一个tank 优先占点的
+    @time_decorator
+    def defend_tank_start_stage_zhandian(self, obj_id):
+        destination = None
+        # tank 初始时刻判断敌方算子到我方距离 距离太近能打到就先别解聚  尤其算子在我方工事”前面“的时候
+        bop = self.get_bop(obj_id)
+        #if len(bop["move_path"]) > 0:  # 有未完成的机动
+        if bop["speed"] != 0:
+            return 
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+        )
+        self.__tank_handle_open_fire(obj_id)
+        flag_close_city_nobody_oc = False
+        if bop["cur_hex"] == closest_city["coord"] and self.color != closest_city["flag"]:
+            self.gen_occupy(obj_id)
+        if self.ops_destination[obj_id] != "" and bop["cur_hex"] ==  self.ops_destination[obj_id]:
+            self.tank_stage[obj_id] = "fire"
+            return 
+    
+        # tar = self.defend_check_nearby_enemy(obj_id)
+        # if len(tar) > 0:
+        #     self._move_action(obj_id, tar[0])
+        #     return
+        # if self.ops_destination[obj_id] == bop["cur_hex"]:
+        #     self.ops_destination[obj_id] = ""
+            
+        ourunits = self.get_defend_infantry_units() + self.get_defend_armorcar_units()
+        neighbors = self.map.get_grid_distance(closest_city["coord"], 0, 1)
+        
+        for ou in ourunits:
+            if ou["cur_hex"] in neighbors and ou["obj_id"] != obj_id:
+                flag_close_city_nobody_oc = True
+        if flag_close_city_nobody_oc == False:     #没有其他我方算子
+            # 准备夺控
+            city_hex = closest_city["coord"]
+            self.prepare_to_occupy[city_hex].append(obj_id)
+            self.ops_destination[obj_id] = closest_city["coord"]
+            self._move_action(obj_id, closest_city["coord"])
+            if bop["cur_hex"] == closest_city["coord"]:
+                self.gen_occupy(obj_id)            #执行夺控
+            #这里是 如果占完点后 敌人过来了  要往后撤一撤  而且状态转换要写清楚
+            if self.color ==  closest_city["flag"]:  # 占完夺控点了
+                # 转为进攻 
+                self.tank_stage[obj_id] = "fire"
+                return 
+                   
+        else:
+            # 如果有空的夺控点且没人参与夺控 去夺控 
+            for city in self.observation["cities"]:
+                flag_move_to_another_city = False
+                if city["coord"] == closest_city["coord"] or len(self.prepare_to_occupy[city["coord"]])>=1:
+                    continue
+                flag_another_city_has_defend_force = False
+                another_city_neighbors = self.map.get_grid_distance(city["coord"], 0, 2)
+                for u in ourunits:
+                    if  u["cur_hex"] in another_city_neighbors:
+                        flag_another_city_has_defend_force = True
+                if flag_another_city_has_defend_force == False:  # 可去该夺控点去占点
+                    if len(self.defend_count_current_pos_enemy(city["coord"], 3)) >= 2:
+                        destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
+                        if len(destination) == 0:
+                            return 
+                        flag_move_to_another_city = True
+                        break
+                    else: 
+                        destination = [city["coord"]]
+                        flag_move_to_another_city = True 
+                    self.ops_destination[obj_id] = destination[0]
+                    self._move_action(obj_id, destination[0])
+                    break
+            if flag_move_to_another_city:
+                self.tank_stage[obj_id] = "fire"
+                return
+            else:
+                destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
+                if len(destination) == 0:
+                    return 
+                self.ops_destination[obj_id] = destination[0]
+                self._move_action(obj_id, self.ops_destination[obj_id])
+                self.tank_stage[obj_id] = "fire"
+                return   
+
+    #@szh0404 步兵班开始交火   直接站桩
+    def defend_troop_fire_stage_zhangzhuang(self, obj_id):
+        #步兵班在开火阶段就站着a
+        destination = None
+        bop = self.get_bop(obj_id)
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+        )
+        if len(bop["move_path"]) > 0 :
+            destination = bop["move_path"][-1]
+            return 
+        self.__handle_open_fire(obj_id)
+        # 检查 是否有步兵
+
+    #@szh0417 检查自己是不是离敌方算子最近的
+    def defend_check_nearest_to_enemy(self,obj_id):
+        bop = self.get_bop(obj_id)
+        enemy_hex = self.defend_enemy_hex()
+        if len(enemy_hex) == 0:
+            return False
+        current_total_ = sum([self.distance(bop["cur_hex"], en_hex) for en_hex in enemy_hex])
+        ourunits = self.get_defend_armorcar_units() + self.get_defend_tank_units() + self.get_defend_infantry_units()
+        flag_nearest_to_enemy = True
+        for ou in ourunits:
+            total_dis = sum([self.distance(ou["cur_hex"],en_hex) for en_hex in enemy_hex])
+            if total_dis < current_total_:
+                flag_nearest_to_enemy = False
+        return flag_nearest_to_enemy
+                
+            
+    #@szh0417 检查到附近有敌人立刻发指令后撤 利用 对方不占点问题  返回
+    def defend_check_nearby_enemy(self, obj_id)->List[int]:
+        bop = self.get_bop(obj_id)
+        enemy_around = self.defend_count_current_pos_enemy(
+            bop["cur_hex"], 3
+        )
+        # 同时检查自己是不是离敌方算子最近的
+        if len(enemy_around) >= 2 or self.defend_check_nearest_to_enemy(obj_id):
+            closest_enemy , min_dis = self.get_bop_closest(bop, self.defend_enemy_info())
+            target_candidate = self.map.get_grid_distance(bop["cur_hex"],2,4)
+            target_candidate = self.defend_filter_key_point_by_scope(target_candidate)
+            target_candidate = [p for p in target_candidate if self.distance(p, closest_enemy["cur_hex"]) > min_dis + 1]
+            target_candidate.sort(key = lambda p : self.map.basic[p // 100][p % 100]["elev"] , reverse= True)
+            destination = target_candidate
+            if destination is None:
+                destination = [p for p in self.map.get_neighbors(bop["cur_hex"]) if self.distance(p, closest_enemy["cur_hex"]) > min_dis + 1]
+            self._move_action(obj_id, destination[0])
+            self.ops_destination[obj_id] = destination[0]
+            return destination
+        else:
+            return [] 
+        
+
+    #@szh0404 步兵班解聚后占点  
+    @time_decorator
+    def defend_troop_start_stage_zhandian(self, obj_id):
+        # 找最近的夺控点
+        destination = None
+        bop = self.get_bop(obj_id)  
+        # if len(bop["move_path"]) > 0:  
+        if bop["speed"] != 0:
+            return 
+        if bop["weapon_cool_time"] == 0:
+            self.__handle_open_fire(obj_id)           # 先开火打一发
+        if bop["forking"]:
+            return 
+        if self.ops_destination[obj_id] == bop["cur_hex"]:
+            self.ops_destination[obj_id] = ""
+        if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
+            self.gen_occupy(obj_id) 
+        # 放在fire stage
+        if self.ops_destination[obj_id] is not None and self.ops_destination[obj_id] != "":
+            if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
+                self.gen_change_state(obj_id, 2)
+                self._move_action(obj_id, self.ops_destination[obj_id])
+                return 
+
+        # 这个条件判断需要再考虑考虑
+        if self.ops_destination[obj_id] is not None and bop["cur_hex"] == self.ops_destination[obj_id]:
+            if bop["cur_hex"] in [ nearby_hidding_fort["cur_hex"] ] and self.ops_destination[obj_id] ==  nearby_hidding_fort["cur_hex"]: 
+                hforts = [op for op in self.observation["operators"] if op["sub_type"]== 20]
+                destination = [o["obj_id"] for o in hforts if o["cur_hex"] == bop["cur_hex"] ]
+                self.gen_enter_fort(obj_id, destination[0])
+                self.troop_stage[obj_id] = "fire"
+                return
+        
+        # 原则上来说一定有closest
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+        )
+        self.ops_destination["obj_id"] =  closest_city["coord"]
+        if self.color != closest_city["flag"]:
+            self.ops_destination[obj_id] = closest_city["coord"]
+            self.gen_change_state(obj_id, 2)
+            self._move_action(obj_id,  self.ops_destination[obj_id] )
+            return
+        # 找最近的隐蔽工事 
+        #our_hidding_fort_list = self.get_hiddingbase_units()
+        # 工事里能不能解聚
+        # 依据隐蔽工事和夺控距离 判断该隐蔽工事和夺控点是不是在一起的 且可进入
+        nearby_hidding_fort = None
+        hidding_forts = [op for op in self.observation["operators"] if op["sub_type"]==  20 and not self.fort_assignments[op["obj_id"]]]
+        
+        if hidding_forts is not None and len(hidding_forts) > 0:
+            nearby_hidding_fort = min(
+                hidding_forts,
+                key=lambda fort: self.distance(bop["cur_hex"], fort["cur_hex"]),
+            )
+            if self.distance(bop["cur_hex"], nearby_hidding_fort["cur_hex"]) >= 2:
+                nearby_hidding_fort = None
+        flag_troop_prepare_enter_fort = False
+        if nearby_hidding_fort is not None:
+            if self.troop_stage[obj_id] == "prepare_to_enter_fort"  and len(self.fort_assignments[nearby_hidding_fort["obj_id"]]) == 0:      
+                self.gen_enter_fort(obj_id, nearby_hidding_fort["obj_id"]) 
+                self.ops_destination[obj_id] = nearby_hidding_fort["cur_hex"]
+                if bop["cur_hex"] == nearby_hidding_fort["cur_hex"]: 
+                    self.troop_stage[obj_id] = "fire"
+                flag_troop_prepare_enter_fort = True
+
+            elif nearby_hidding_fort and not bop["entering_fort"] and not bop["in_fort"] \
+                and len(self.fort_assignments[nearby_hidding_fort["obj_id"]]) < 1 and flag_troop_prepare_enter_fort == False:
+                destination = nearby_hidding_fort["cur_hex"]
+                
+                if self.distance(bop["cur_hex"], destination) < 2:
+                    self.gen_change_state(obj_id, 2)
+                elif self.distance(bop["cur_hex"], destination) <= 2:
+                    self.gen_change_state(obj_id, 1)
+                self._move_action(obj_id,destination)  # 反正先每帧发个冲锋指令 
+                self.troop_stage[obj_id] = "prepare_to_enter_fort"  
+                self.ops_destination[obj_id] = destination
+                return
+        # 这里增加支援其他夺控点
+        if bop["in_fort"]:
+            return 
+        flag_city_in_control = False 
+        if closest_city["flag"] == self.color:
+            flag_city_in_control = True
+            
+        if flag_city_in_control ==  False:
+            self.ops_destination[obj_id] = closest_city["coord"]
+            self._move_action(obj_id, closest_city["coord"])
+            if closest_city["coord"] == bop["cur_hex"]:
+                self.gen_occupy(obj_id)
+
+        flag_has_another_defend_unit = 0
+        flag_can_support_another_city = False
+        ourtroop = self.get_defend_infantry_units()
+        for t in ourtroop:
+            nearby_hidding_fort_hex = nearby_hidding_fort["cur_hex"] if nearby_hidding_fort is not None else closest_city["coord"]
+            if self.ops_destination[t["obj_id"]] in [closest_city["coord"], nearby_hidding_fort_hex]:
+                flag_has_another_defend_unit += 1
+        if flag_has_another_defend_unit > 1 :
+            flag_can_support_another_city = True
+            for c in self.observation["cities"]:
+                flag_c_need_support =  True
+                if c["name"] == closest_city["name"]:
+                    continue
+                cn = list(self.map.get_grid_distance(c["coord"], 0, 2)) 
+                for t in ourtroop:
+                    if self.ops_destination[ t["obj_id"] ] in cn:
+                         flag_c_need_support = False
+                if flag_c_need_support and self.distance(bop["cur_hex"], c["coord"]) <=4 :   #可去支援
+                    if len(self.defend_count_current_pos_enemy(c["coord"], 2)) <= 2:    # 敌方太多就别去了
+                        self.ops_destination[obj_id] = c["coord"]
+                        return 
+                    
+       
+        if destination is not None and len(destination) > 0:
+            self._move_action(obj_id, destination[0])
+        # 直接进点
+        self._move_action(obj_id, closest_city["coord"])
+        self.ops_destination[obj_id] = closest_city["coord"]
+        self.troop_stage[obj_id] = "fire"
+        return 
+    
+
+    @time_decorator
+    def defend_troop_fire_stage_zhandian(self, obj_id):
+        destination = None
+        bop = self.get_bop(obj_id)
+        if bop["weapon_cool_time"] == 0:
+            self.__handle_open_fire(obj_id)
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+        )
+        if self.ops_destination[obj_id] == bop["cur_hex"]:
+            self.ops_destination[obj_id] = ""
+        if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
+            self.gen_change_state(obj_id, 2)
+            self._move_action(obj_id, self.ops_destination[obj_id])
+            return
+        if bop["cur_hex"] == closest_city["coord"]:
+            self.gen_occupy(obj_id)
+        hforts = [op for op in self.observation["operators"] if op["sub_type"]== 20]
+        hforts_hex = [op["cur_hex"] for op in self.observation["operators"] if op["sub_type"]== 20]
+        if bop["cur_hex"] in hforts_hex and self.ops_destination[obj_id] in hforts_hex:
+            destination = [o["obj_id"] for o in hforts if o["cur_hex"] == bop["cur_hex"] ]
+            self.gen_enter_fort(obj_id, destination[0])
+    #@szh 0404  更新prepare _to  _occupy 的内容
+    def update_prepare_to_occupy(self):
+        # ops = self.get_defend_tank_units() + self.get_defend_armorcar_units()
+        # cities_map = {c["name"]  : c["coord"]  for c in self.observation["cities"]  }
+        # 检查 每个算子des 是不是当前的这个  步兵班除外
+        for k, v in self.prepare_to_occupy.items():   # K:coord  v list of obj_id
+            v = list(set(v))
+            for i in range(len(v)):  # v_i obj_id
+                if self.ops_destination[ v[i] ] != k:
+                    v.pop(i)          
+
+    def get_bop_closest(self, bop, refer_bops: list):
+        '''
+        返回用作参照的算子中最近的一个及距离
+        '''
+        min_dis = 100000
+        bop_closest = None
+        for refer_bop in refer_bops:
+            bop_dis = self.distance(bop["cur_hex"], refer_bop["cur_hex"])
+            # 如果refer_bop是自身则跳过
+            if bop['obj_id'] != refer_bop['obj_id'] and bop_dis < min_dis:
+                min_dis = bop_dis
+                bop_closest = refer_bop
+        return bop_closest, min_dis
+
+    #@szh 0404 检查当前格有没有敌方算子  s
+    def defend_count_current_pos_enemy(self, cur_pos:int, scope:int)->List[int] :
+        """
+            scope 范围为 scope 的格子有多少个敌方算子
+        """
+        enemys = [op for op in self.observation["operators"] if op["color"]!=self.color ]
+        if scope == 0:
+            return [ op for op in enemys if op["cur_hex"] == cur_pos]
+        return  [op for op in enemys if self.distance(op["cur_hex"], cur_pos) <= scope]
+            
+      #@szh 0404 战车开火策略
+    @time_decorator
+    def defend_chariot_fire_stage_zhandian(self, obj_id):
+        destination = None
+        bop = self.get_bop(obj_id)
+        if bop["speed"] != 0:         # 如果当前还在行进中
+            #destination = bop["move_path"][-1]
+            return 
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+        )
+        # if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
+        #     self.__handle_open_fire(obj_id)
+        if self.ops_destination[obj_id] != "" and  bop["cur_hex"] != self.ops_destination[obj_id]:
+            self._move_action(obj_id, self.ops_destination[obj_id])
+            return
+
+        if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
+            self.gen_occupy(obj_id)
+            if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) >= 3: #附近有敌方算子 而且很多  溜了溜了
+                destination = self.defend_chariot_find_best_cover_points(bop["cur_hex"], 4, 6)
+                self.ops_destination[obj_id]  = destination[0]
+                self._move_action(obj_id, self.ops_destination[obj_id])
+                return 
+        tar = self.defend_check_nearby_enemy(obj_id)
+        if len(tar) > 0:
+            self._move_action(obj_id, tar[0])
+            return
+        if bop["speed"] == 0  or self.ops_destination[obj_id] == "":  #
+            # 判断和敌方单位距离
+            pts_candidates = self.map.get_grid_distance(\
+                bop["cur_hex"], 2, 4
+            )
+            pts_candidates = self.defend_filter_key_point_by_scope(pts_candidates)
+            pts_candidates = self.defend_filter_key_point_by_enemy_pos(
+                bop["cur_hex"],
+                pts_candidates, filter_mode="enemy"
+            )
+            if pts_candidates is None:
+                pts_candidates = list(self.map.get_grid_distance(\
+                bop["cur_hex"], 1, 3
+                ))
+            target_pos = random.choice(pts_candidates)
+            self._move_action(obj_id, target_pos)
+            self.ops_destination[obj_id] = target_pos
+
+        # 可以覆盖上边的
+        city_empty = self.defend_check_city_no_hex()
+        if self.distance(bop["cur_hex"], closest_city["coord"]) >= 5 and len(city_empty) > 0:
+            city_empty.sort(key = lambda c: self.distance(c["coord"], bop["cur_hex"]))
+            self.ops_destination[obj_id] = city_empty[0]["coord"]
+            self._move_action(obj_id, self.ops_destination[obj_id])   
+            return  
+        else:
+            scities = [c for c in self.observation["cities"]]
+            scities.sort(key = lambda c: self.distance(c["coord"], bop["cur_hex"]))
+            second_near_city, third_near_city = scities[1], scities[2]
+            second_near_ene =  [op for op in self.observation["operators"] if op["color"]!=self.color \
+                        and self.map.get_distance(op["cur_hex"], second_near_city["coord"]) <= 1]
+            third_near_ene = [op for op in self.observation["operators"] if op["color"]!=self.color \
+                        and self.map.get_distance(op["cur_hex"], third_near_city["coord"]) <= 2]
+            if len(second_near_ene) == 0 and len(third_near_ene) != 0:
+                self.ops_destination[obj_id] = second_near_city["coord"]
+                self._move_action(obj_id, self.ops_destination[obj_id])
+                return  
+
+        closest_enemy , min_dis = self.get_bop_closest(bop, self.defend_enemy_info())
+        if min_dis <= 2: # 优先避免同格交战
+            #找自身围为2的游击点  但得和对方算子拉开距离
+                youji_point_candidates = self.defend_get_key_point_around_fort(\
+                    bop["cur_hex"],
+                    mode = "youji"
+               )
+                youji_point_candidates = self.defend_filter_key_point_by_scope(youji_point_candidates)
+                youji_point_candidates = [p for p in youji_point_candidates if self.distance(p, closest_enemy["cur_hex"]) >= min_dis]
+                if len(youji_point_candidates)  > 0 :
+                    destination = [random.choice(youji_point_candidates)]
+                if type(destination) == int:
+                    destination = [destination]
+                self.ops_destination[obj_id]  = destination[0]
+                self._move_action(obj_id, self.ops_destination[obj_id])  
+                return  
+           
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0 and self.color != closest_city["flag"]:
+            destination = [closest_city["coord"]]
+
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0 and self.color == closest_city["flag"]:
+           # 周边6个格随机走
+            if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) >2 :
+                destination = self.defend_chariot_find_best_cover_points(closest_city["coord"], 2, 4)       
+            else:
+                destination = self.defend_chariot_find_best_cover_points(closest_city["coord"], 1, 3)  
+                
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) != 0 and self.color != closest_city["flag"]:
+            ourunits = self.get_defend_infantry_units() + self.get_defend_armorcar_units() + self.get_defend_tank_units()
+            for c in self.observation["cities"]:
+                flag_c_need_support =  True
+                if c["name"] == closest_city["name"]:
+                    continue
+                cn = list(self.map.get_grid_distance(c["coord"], 0, 2))  # 0-2 范围没有我方
+                for t in ourunits:
+                    if self.ops_destination[ t["obj_id"] ] in cn:
+                         flag_c_need_support = False
+                if flag_c_need_support and self.color != c["flag"] :   #可去支援
+                    if len(self.defend_count_current_pos_enemy(c["coord"], 1)) == 0 and \
+                        len(self.defend_count_current_pos_enemy(c["coord"], 3)) <= 2:
+                        destination = [c["coord"]]
+                        self.prepare_to_occupy[c["name"]].append(obj_id) 
+                        break
+        if destination is None:
+            destination = [closest_city["coord"]]            
+        self.ops_destination[obj_id] = destination[0]
+        self._move_action(obj_id, self.ops_destination[obj_id]) 
+
+        # if bop["weapon_cool_time"] == 0 and closest_enemy is not None and self.distance(closest_enemy["cur_hex"], bop["cur_hex"]) >=2: 
+        #     self.__handle_open_fire(obj_id)   
+
+
+    #@szh 0404 战车开火策略
+    # @time_decorator
+    # def defend_chariot_fire_stage(self, obj_id):
+    #     destination = None
+    #     bop = self.get_bop(obj_id)
+    #     if len(bop["move_path"]) != 0:         # 如果当前还在行进中
+    #         #destination = bop["move_path"][-1]
+    #         return 
+    #     closest_city = min(
+    #         self.observation["cities"],
+    #         key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+    #     )
+    #     if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
+    #         self.__handle_open_fire(obj_id)
+    #     flag_ene_is_around_city = False
+    #     city_ene = [op for op in self.observation["operators"] if op["color"]!=self.color and self.distance(op["cur_hex"], closest_city["coord"]) <= 2]
+    #     if not destination :                    # 如果没有行进规划 待安排的情况  
+    #         if len(city_ene) > 0:
+    #             flag_ene_is_around_city = True
+    #         closest_enemy , min_dis = self.get_bop_closest(bop, self.defend_enemy_info())
+    #         if min_dis < 3: # 避免同格交战
+    #             #找自身范围为2的游击点  但得和对方算子拉开距离
+    #              youji_point_candidates = self.defend_get_key_point_around_fort(\
+    #              bop["cur_hex"],
+    #              mode = "youji"
+    #             )
+    #              youji_point_candidates = self.defend_filter_key_point_by_scope(youji_point_candidates)
+    #              youji_point_candidates = [p for p in youji_point_candidates if self.distance(p, closest_enemy["cur_hex"]) >= min_dis]
+    #              youji_point_candidates.sort(key = lambda p : self.map.basic[p // 100][p % 100]["elev"] , reverse= True)
+    #              destination = youji_point_candidates                
+    #         elif min_dis >= 3:   #  查看是否在cd中
+    #             # 检查是否满足条件
+    #             destination = self.defend_chariot_find_best_cover_points(
+    #                         closest_city["coord"], 4, 7
+    #                     )
+    #             if bop["cur_hex"] in destination:
+    #                 destination = None
+                
+    #         #     #if              #  查看其它夺控点是否需要增援 根据情况调整自己位置
+    #         #     pass
+    #     if destination is not None:
+    #         self._move_action(obj_id, destination[0]) 
+    #         # 这个地方报错了  出现destination 是 int
+            
+    #     if bop["weapon_cool_time"] == 0:
+    #         self.__handle_open_fire(obj_id)
+    
+    #@szh0404  reset 占领点状态
+    @time_decorator
+    def reset_occupy_state(self):
+        cities = [ci for ci in self.observation["cities"] ]
+        ourunits = self.get_defend_armorcar_units() + self.get_defend_infantry_units() + self.get_defend_tank_units()
+        for c in cities:
+            flag_city_has_our_units_nearby = False
+            neighbors_hex = list(self.map.get_grid_distance(c["coord"], 0, 1)) +  [c["coord"]]  
+            for ou in ourunits:
+                if ou["cur_hex"] in neighbors_hex:
+                    flag_city_has_our_units_nearby = True
+                    break
+             
+            if flag_city_has_our_units_nearby == False:
+                self.prepare_to_occupy[c["name"]] = [] 
+
+    #@szh0417 重新写一个tank openfire
+    def __tank_handle_open_fire(self, attacker_ID):
+        self._fire_action(attacker_ID)
+
+    #@szh0417 写一个检查夺控点
+    def defend_check_city_no_hex(self)->List[Dict]:
+        cities = [c for c in self.observation["cities"]]
+        city_ene = []
+        city_has_no_ene = []
+        for c in cities:
+            if c["flag"] == self.color:
+                continue
+            city_ene = [op for op in self.observation["operators"] if op["color"]!=self.color \
+                        and self.map.get_distance(op["cur_hex"], c["coord"]) <= 1]
+            if city_ene is None or len(city_ene) == 0:
+                city_has_no_ene.append(c)
+        return city_has_no_ene
+    
+    # #@szh0417 写一个如果距离太远 向夺控点靠拢
+    # def defend_check_distance_too_far(self, obj_id)->bool:
+        
+        
+    
+    
+            
+        
+        
+    #@szh0404  tank开火
+    @time_decorator
+    def defend_tank_fire_stage_zhandian(self, obj_id):
+        destination = None
+        bop = self.get_bop(obj_id)
+        closest_city = min(
+            self.observation["cities"],
+            key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
+        )
+        # 判断是否去其他点支援
+        if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
+            self.__tank_handle_open_fire(obj_id)
+        if self.ops_destination[obj_id] == bop["cur_hex"]:
+            self.ops_destination[obj_id] = ""
+        """
+            # 策略  找没有啥敌人的夺控点一占
+            # 1. 先判断当前是否在夺控点上  
+            #    在的话    判断周围是否敌方算子   有的话    撤离  
+                                               没有的话   接着不动
+              2. 判断当前有无空闲夺控点
+                                    有的话     有敌方算子  不去了  当前
+                                            没有敌方算子   去夺控
+            # 避免同格交战
+            
+        """
+        # 找最近的且未夺控的点 一种是没人夺控  就是中立颜色              
+        if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
+            self._move_action(obj_id, self.ops_destination[obj_id])
+            return
+        tar = self.defend_check_nearby_enemy(obj_id)
+        if len(tar) > 0:
+            self._move_action(obj_id, tar[0])
+            return
+        if bop["speed"] == 0  or self.ops_destination[obj_id] == "":  
+            # 判断和敌方单位距离
+            pts_candidates = self.map.get_grid_distance(\
+                bop["cur_hex"], 2, 4
+            )
+            pts_candidates = self.defend_filter_key_point_by_scope(pts_candidates)
+            pts_candidates = self.defend_filter_key_point_by_enemy_pos(
+                bop["cur_hex"],
+                pts_candidates, filter_mode="enemy"
+            )
+            if pts_candidates is None:
+                pts_candidates = list(self.map.get_grid_distance(\
+                bop["cur_hex"], 1, 4
+                ))
+            target_pos = random.choice(pts_candidates)
+            self._move_action(obj_id, target_pos)
+            self.ops_destination[obj_id] = target_pos
+
+        if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
+            self.gen_occupy(obj_id)
+            if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) > 3: #附近有敌方算子 而且很多  溜了溜了
+                destination = self.defend_chariot_find_best_cover_points(bop["cur_hex"], 5, 7)
+                self.ops_destination[obj_id]  = destination[0]
+                self._move_action(obj_id, self.ops_destination[obj_id])
+                return   
+        city_empty = self.defend_check_city_no_hex()
+        if self.distance(bop["cur_hex"], closest_city["coord"]) >= 4 and len(city_empty) > 0:
+            city_empty.sort(key = lambda c: self.distance(c["coord"], bop["cur_hex"]))
+            self.ops_destination[obj_id] = city_empty[0]["coord"]
+            self._move_action(obj_id, self.ops_destination[obj_id])   
+            return         
+                
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0 and self.color != closest_city["flag"]:
+            destination = [ closest_city["coord"] ]
+            # self.ops_destination[obj_id] = 
+            # self._move_action(obj_id, self.ops_destination[obj_id])
+            # return 
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0 and self.color == closest_city["flag"]:
+           # 周边6个格随机走
+            if len(self.defend_count_current_pos_enemy(closest_city["coord"], 3)) >2 :
+                destination = self.defend_chariot_find_best_cover_points(closest_city["coord"], 2, 4)    
+                # self.ops_destination[obj_id] = destination[0]
+                # self._move_action(obj_id, self.ops_destination[obj_id])    
+            else:
+                neighbors1 = self.map.get_grid_distance(closest_city["coord"], 0, 1)
+                destination =  [random.choice(list(neighbors1))]
+                # self.ops_destination[obj_id] = destination
+                # self._move_action(obj_id, self.ops_destination[obj_id]) 
+            #  得考虑一下 self .color  ==  怎么办
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) != 0 and self.color != closest_city["flag"]:
+            # 找附近没有敌人的我方夺控点 
+            flag_can_support_another_city = False
+            ourunits = self.get_defend_infantry_units() + self.get_defend_armorcar_units() + self.get_defend_tank_units()
+            for c in self.observation["cities"]:
+                flag_c_need_support =  True
+                if c["name"] == closest_city["name"]:
+                    continue
+                cn = list(self.map.get_grid_distance(c["coord"], 0, 1))  # 0-2 范围没有我方
+                for t in ourunits:
+                    if self.ops_destination[ t["obj_id"] ] in cn:
+                         flag_c_need_support = False
+                if flag_c_need_support and self.color != c["flag"] :   #可去支援
+                    if len(self.defend_count_current_pos_enemy(c["coord"], 1)) == 0 and \
+                        len(self.defend_count_current_pos_enemy(c["coord"], 3)) <= 2:
+                        destination = [ c["coord"] ]
+                        self.prepare_to_occupy[c["name"]].append(obj_id) 
+                        break
+            # 这里看一下  得加上如果不能支援应该怎么
+        if destination is None:
+            destination = list(self.defend_chariot_find_best_cover_points(bop["cur_hex"], 5, 7)) + [closest_city["coord"]]
+        
+        # 避免同格交战
+        closest_enemy, min_dis = self.get_bop_closest(
+            bop,  
+            [op for op in self.observation["operators"] if op["color"]!=self.color]
+        )
+        if min_dis <= 2:
+            youji_point_candidates = self.defend_get_key_point_around_fort(\
+                bop["cur_hex"],
+                mode = "youji"
+            )
+            youji_point_candidates = self.defend_filter_key_point_by_scope(youji_point_candidates)
+            youji_point_candidates = [p for p in youji_point_candidates if self.distance(p, closest_enemy["cur_hex"]) > min_dis]
+            if len(youji_point_candidates)  > 0 :
+                destination = [random.choice(youji_point_candidates)]
+        if type(destination) == int:
+            destination = [destination]
+        self.ops_destination[obj_id]  = destination[0]
+        self._move_action(obj_id, self.ops_destination[obj_id])  
+        return             
+    #@szh0404  打个补丁 解聚之后周围随机数移动  
+    def _defend_jieju_and_move(self, obj_id):
+        bop = self.get_bop(obj_id)
+        neighbors = list( self.map.get_grid_distance(bop["cur_hex"], 0, 1) )
+        destination = random.choice(neighbors)
+        self._move_action(obj_id, destination)
+        if bop["sub_type"] == BopSubType.Infantry:
+            self.gen_change_state(obj_id, 2)
+
+#####################################################
