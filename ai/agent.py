@@ -155,6 +155,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         
         target_xy= self._hex_to_xy(target_pos)
         vector_xy = target_xy - xy_ave
+        target_distance = self.map.get_distance(target_pos, pos_ave)
 
         # enemy_infantry_units = self.select_by_type(self.detected_state,key="sub_type",value=2)
         # tanks and other things included
@@ -172,9 +173,16 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
             dot_single = np.dot(vector_single, vector_xy) / np.linalg.norm(vector_xy+0.001) / np.linalg.norm(vector_single+0.001)
             
+            # 还得加一个判断以防止敌人在目标点的延长线上导致的超级大回环。拟采用向量的模来判断。
+            if enemy_distance > target_distance*1.1:
+                # 哪怕是在完全正面都比目标点远了，要是在侧面就更远了，就不是很有所谓了。保险起见再来个安全裕度
+                flag_far_enemy = True
+            else:
+                flag_far_enemy = False
+
             
-            if enemy_distance<20 and dot_single>0.30:
-                # 这两个阈值都是从案例里抠出来的。
+            if enemy_distance<20 and dot_single>0.50 and flag_far_enemy==False:
+                # 这两个阈值都是从案例里抠出来的。flag_far_enemy用来防止究极大回环
                 enemy_infantry_units_danger.append(enemy_infantry_unit)
                 enemy_infantry_dot_danger.append(dot_single)
                 enemy_infantry_jvli_danger.append(enemy_distance)
@@ -333,10 +341,13 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 target_pos_list = self.target_pos_list
         
         # 强行判断是否到了，到了就改成目标点。越写越乱越写越丑了，但是先不管了，能用就行。
-        jvli = self.distance(self.get_pos_average(units), target_pos_list[0])
+        pos_ave = self.get_pos_average(units)
+        jvli = self.distance(pos_ave, target_pos_list[0])
         if jvli < 3:
             # 说明是到了
             target_pos_list[0] = self.target_pos
+        # 还得再来个强行判断，以防止出现超级大回环。就是距离差不多了就直着过去了。
+        jvli = self.distance(pos_ave, self.target_pos)
 
         for unit in units:
             # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
