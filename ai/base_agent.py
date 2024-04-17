@@ -1118,6 +1118,12 @@ class BaseAgent(ABC):
             elif self.env_name=="defend":
                 self.defend_setup()
         
+        # 这些是demo那个里面的，尚霖用过里面的东西。
+        self.update_time()
+        self.update_tasks()
+        self.update_all_units()
+        self.update_valid_actions()
+        
         # 这里需要来一个东西，考虑往那个set里面增加一些需要探测的点。
         self.add_unscout_area()
 
