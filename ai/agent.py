@@ -415,7 +415,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 先把UAV取出来
         UAV_units = self.select_by_type(self.status["operators"],key="sub_type",value=5)
         # 然后把目标取出来
-        if len(self.detected_state)>0:
+        if len(self.detected_state)>0 and False:
             target_unit = self.detected_state[0]
             target_pos = target_unit["cur_hex"]
             # 然后设定状态就开始过去了。
@@ -897,7 +897,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.group_A(IFV_units,target_pos,model="force")
             # self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
             self.list_A(IFV_units,target_pos)
-        if self.num>300:
+        elif self.num>350:
             self.list_A(IFV_units,target_pos)
 
         # if arrived, then juhe.
@@ -905,21 +905,23 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.final_juhe(tank_units)
             self.final_juhe(IFV_units)
 
-        # if self.num>1000:
-        #     # 最后一波了，直接F2A了
-        #     self.F2A(target_pos)
-        #     pass # disabled for tiaoshi
+        if self.num>1500:
+            # 最后一波了，直接F2A了
+            self.F2A(target_pos)
+            pass # disabled for tiaoshi
         
-        if (self.num % 100==0) and (self.num>-200) and (self.num<2201):
+        if (self.num % 100==0) and (self.num>-200) and (self.num<1000):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.这里面是带骑脸目标、停车、引导打击等逻辑的，但是好像不是太适合现在这个场景。
-            # self.UAV_patrol(target_pos)
+            self.UAV_patrol(target_pos)
             
             # kaibai is fine.逃避可耻但有用
             # self.group_A(UAV_units,target_pos)
 
             # 抢救一下，无人机给一些新的说法
-            self.UAV_patrol2(self.unscouted)
+            # self.UAV_patrol2(self.unscouted)
+        else:
+            self.group_A(UAV_units,target_pos)
         return 
 
     def step_scout(self):

@@ -120,8 +120,8 @@ class auto_run():
 
 
         # save replay
-        save_replay(self.begin, self.all_states)
-        return self.all_states
+        zip_name = save_replay(self.begin, self.all_states)
+        return self.all_states, zip_name
         # pass
 
 class record_result():
@@ -132,14 +132,20 @@ class record_result():
         self.return_list = [] 
         self.config_str = ""
         self.all_games = []
+        self.time_list = [] 
+        self.fupan_names = [] 
 
     def record_config(self, config_str:str):
         self.config_str = config_str
 
-    def get_result_single(self,all_states):
+    def get_result_single(self,all_states,zip_name):
         if len(self.config_str)==0:
             raise Exception("auto_run: config_str is empty, G. do not be lazy.")
         self.all_games.append(all_states)
+        self.fupan_names.append(zip_name)
+        this_moment = time.time()
+        self.time_list.append(this_moment - self.begin)
+        self.begin = this_moment
         
     def get_result_all(self,all_games):
         # get result from one round
@@ -165,8 +171,13 @@ class record_result():
         file_txt.write(f"time: {current_time}\n")
         file_txt.write(f"reward_ave: {self.reward_ave}\n")
         file_txt.write(f"return_ave: {self.return_ave}\n")
-        file_txt.write(f"reward_list: {self.reward_list}\n")
-        file_txt.write(f"return_list: {self.return_list}\n")
+        for i in range(geshu):
+            file_txt.write("--------NO."+str(i)+"game--------\n")
+            file_txt.write(f"reward: {self.reward_list[i]}\n")
+            file_txt.write(f"return: {self.return_list[i]}\n")
+            file_txt.write(f"time: {self.time_list[i]}\n")
+            file_txt.write(f"fupan_name: {self.fupan_names[i]}\n")
+
         file_txt.write("\n\n\n")
         file_txt.close()
         pass
@@ -178,6 +189,7 @@ def save_replay(replay_name, data):
         os.makedirs("logs/replays/")
     with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         z.writestr(f"{replay_name}.json", json.dumps(data, ensure_ascii=False, indent=None, separators=(',', ':')).encode('gbk'))
+    return zip_name 
 
 
 if __name__ == "__main__":
@@ -187,7 +199,7 @@ if __name__ == "__main__":
         # shishi = auto_run(env_name="defend")
         shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")
-        all_states_single = shishi.run_single()
-        jieguo.get_result_single(all_states_single)
+        all_states_single,zip_name = shishi.run_single()
+        jieguo.get_result_single(all_states_single,zip_name)
     jieguo.get_result_all(jieguo.all_games)
 
