@@ -560,6 +560,8 @@ class Map:
             return False
         elif self.can_observe(pos1, pos2, unit1_type, unit2_type):
             return True
+        else:
+            return False
   
     def get_ob_area(self, center: int, unit_type: int, exclude_area=None):
         """

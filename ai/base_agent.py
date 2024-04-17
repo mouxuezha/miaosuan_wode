@@ -1023,7 +1023,7 @@ class BaseAgent(ABC):
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
 
-    def crossfire_setup(self, task):
+    def crossfire_setup(self):
         air_start = []
         print("copy from shanglin")
         for obj_id, unit in self.owned.items():
@@ -1044,16 +1044,25 @@ class BaseAgent(ABC):
         self.unscouted = set(self.area.copy())
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
+        self.ob = self.observation
     
     def defend_setup(self, task):
         pass 
-
+    def update_unit(self, obj_id, cur_hex):
+        """更新算子的当前和上一格位置信息"""
+        if obj_id not in self.units.keys():
+            self.units[obj_id] = [-1, cur_hex]
+        else:
+            self.units[obj_id][0] = self.units[obj_id][1]
+            self.units[obj_id][1] = cur_hex
     def guess_enemy(self, cur_units):
         # xxh加的
         if self.env_name=="cross_fire":
-            cur_units = copy.deepcopy(self.status["operators"])
-            old_units = copy.deepcopy(self.status_old["operators"])
-            self.units = old_units
+            # cur_units = copy.deepcopy(self.status["operators"])
+            # old_units = copy.deepcopy(self.status_old["operators"])
+            # self.units = old_units
+            # suanle,zenme kuai,zenme lai
+            old_units = set(self.units.keys())
         elif self.env_name=="scout":
             old_units = set(self.units.keys())
         else:
@@ -1078,6 +1087,10 @@ class BaseAgent(ABC):
             print(f"missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}")
 
     def can_you_shoot_me(self, cur_hex):
+        
+        if cur_hex == -1:
+            return set()
+
         cond = self.map.basic[cur_hex // 100][cur_hex % 100]["cond"]
         radius = 12 if cond in [CondType.Jungle, CondType.City] else 20
         area = list(self.map.get_grid_distance(cur_hex, 0, radius))
@@ -1106,10 +1119,20 @@ class BaseAgent(ABC):
             # 然后从中减去已经探到的。
             area_concern_single = area_concern_single - scouted 
             # 然后合并到unscouted里面去
-            self.unscouted = self.unscouted + area_concern_single
+            self.unscouted = self.unscouted | area_concern_single
 
     def update_from_shanglin(self):
         # 原则上这个作为尚霖那个和我的这堆的唯一的一个接口，其他地方尽量别乱改尚霖这套的里面的东西。
+          
+                   
+        # 这些是demo那个里面的，尚霖用过里面的东西。
+        self.ob = self.observation
+        self.update_time()
+        self.update_tasks()
+        self.update_all_units()
+        self.update_valid_actions()
+
+
         if self.num<2:
             if self.env_name=="cross_fire":
                 self.crossfire_setup()
@@ -1118,21 +1141,22 @@ class BaseAgent(ABC):
             elif self.env_name=="defend":
                 self.defend_setup()
         
-        # 这些是demo那个里面的，尚霖用过里面的东西。
-        self.update_time()
-        self.update_tasks()
-        self.update_all_units()
-        self.update_valid_actions()
-        
         # 这里需要来一个东西，考虑往那个set里面增加一些需要探测的点。
         self.add_unscout_area()
 
         # 更新一下探测信息
+
         for unit in self.status["operators"]:
-            self.update_unscouted(unit["cur_hex"], unit["type"])
+            if unit["cur_pos"] == 0: # 完成一格移动
+                cur_hex = unit["cur_hex"]
+                self.update_unit(unit["obj_id"], cur_hex)
+                self.update_unscouted(cur_hex, unit["type"])
+                # print(f"remain: {len(self.unscouted)}")           
         
         # 更新一下被打信息
-        self.guess_enemy(self.status["operators"])
+        if len(self.owned) < len(self.units):
+            cur_units = set(self.owned.keys())
+            self.guess_enemy(cur_units)
 
         # 原则上到这里就可以读self.unscouted来飞无人机了。
 
@@ -1786,7 +1810,7 @@ class BaseAgent(ABC):
         elif role == "knight":
             if jvli ==0:
                 # then wait, don't do anything include set_none.
-                print("knight is waiting")
+                # print("knight is waiting")
                 self.abstract_state[attacker_ID]["waiting_num"] = self.abstract_state[attacker_ID]["waiting_num"] -1 
                 if self.abstract_state[attacker_ID]["waiting_num"] == 0:
                     # its king is not exists anymore.
