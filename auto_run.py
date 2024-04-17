@@ -32,9 +32,9 @@ class auto_run():
         pass
 
     def __init_defend(self):
-        from ai.agent_guize import agent_guize
+        from ai.agent import Agent
         self.env = DefendEnv(3,5,1)
-        self.agent = agent_guize()
+        self.agent = Agent()
         self.begin = time.time()   
 
     def __init_crossfire(self):
@@ -197,10 +197,10 @@ def save_replay(replay_name, data):
 
 if __name__ == "__main__":
     jieguo = record_result()
-    jieguo.record_config("debug raolu, 增加了分类讨论的绕路逻辑，增加了被打的势场修正，原则上能好点。")
+    jieguo.record_config("debug defend, merge")
     for i in range(10):
-        # shishi = auto_run(env_name="defend")
-        shishi = auto_run(env_name="crossfire")
+        shishi = auto_run(env_name="defend")
+        # shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")
         all_states_single,zip_name = shishi.run_single()
         jieguo.get_result_single(all_states_single,zip_name)

@@ -89,7 +89,18 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.map_data = None
 
         self.num = 0 
-   
+
+    def time_decorator(func):
+        @wraps(func)
+        def core(self, *args, **kwargs):
+            start = time()
+            res = func(self, *args, **kwargs)
+            print("{time_step}: function::{funcname} :: time costing: {time_costing}".format(\
+                time_step = self.num, funcname = func.__name__, time_costing = time() - start ) )
+            return res 
+        return  core
+
+
     # guize_functions xxh
     def F2A(self,target_pos):
         units = self.status["operators"]
@@ -665,6 +676,16 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         for communication in communications:
             defend_pos_single = communication["hex"]
             defend_pos.append(defend_pos_single)
+            
+        #@szh0404 这个地方看一下是不是在这里初始化BopSubType
+        self.troop_stage = {op["obj_id"]: ""  for op in self.observation["operators"] if op["sub_type"]==BopSubType.Infantry}
+        self.chariot_stage = {op['obj_id']: "" for op in self.observation["operators"] if op["sub_type"] == BopSubType.Chariot}
+        self.tank_stage =  {op['obj_id']: "" for op in self.observation["operators"] if op["sub_type"] == BopSubType.Tank}
+        ops = self.get_defend_armorcar_units() + self.get_defend_infantry_units() + self.get_defend_tank_units()
+        self.ops_destination = {op['obj_id']: "" for op in ops if op["color"] == self.color}
+        self.prepare_to_occupy = {op['coord']: [] for op in self.observation["cities"]}
+        
+
         
         return defend_pos
 
@@ -959,6 +980,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     ###################### defend  ############################    
     @time_decorator
     def step_defend(self):
+        self.act = []
         # # unfinished yet.
         
         # # 先把场景目标点在哪读出来
@@ -1035,6 +1057,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 self.defend_BT_Tank(tank["obj_id"])
         else:
             self.defend_goto_cities()
+        
+        print("+++++++++++++++ act +++++++++++++++ : ",len(self.act))
 
 
     #@szh 0404 所有算子执行最终夺控
@@ -1711,6 +1735,18 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         else:
             return [] 
         
+    def __handle_open_fire(self, attacker_ID):
+        # 有啥能打的就都打一遍呗。这个还是共用CD的，不用考虑遍历。共用CD挺傻逼的讲道理。
+
+        # 如果在机动，就停下来。
+        flag_is_stop = self.is_stop(attacker_ID)
+        if not(flag_is_stop):
+            # 没有is stop就是在机动呗，那就停下来。
+            self._stop_action(attacker_ID)
+
+        # 这个写法相当于每一步都检测一次，能打就打
+        # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
+        self._fire_action(attacker_ID)
 
     #@szh0404 步兵班解聚后占点  
     @time_decorator
@@ -2234,5 +2270,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self._move_action(obj_id, destination)
         if bop["sub_type"] == BopSubType.Infantry:
             self.gen_change_state(obj_id, 2)
+
 
 #####################################################
