@@ -3,7 +3,7 @@ from typing import List
 import os, random, copy
 from .tools import *
 import json
-from .const import ActType, BopType, MoveType, TaskType, UnitSubType
+from .const import *
 from dataclasses import dataclass
 
 
@@ -66,6 +66,25 @@ class BaseAgent(ABC):
         self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
         self.env_name = "cross_fire" # defualt. 
         self.flag_detect_update = True
+        
+        # 以下这部分是从尚霖那里抄来的
+        self.area = []
+        self.xy_points = [] # [np.array,]
+        self.unscouted = set()
+        self.air_num = 0
+        self.air_traj = {}
+        self.enemy_pos = {}  # {obj_id: hex}
+        self.units = {}  # {obj_id: [last, cur]}
+        self.suspected = set()
+        # self.scouted = set()
+
+        self.repeat_map = {} # 用于附加寻路代价，更倾向于探索未知区域
+        self.threat_map = {} # 用于寻路代价值，更倾向于避开敌人射程
+        # self.air_ob = {}
+        # self.car_ob = {}
+        # self.car_to_detect = set()
+        # self.car_target = None
+        # self.car_cluster = [] # [hex, chosen_flag]
 
     def get_scenario_info(self, scenario: int):
         SCENARIO_INFO_PATH = os.path.join(
@@ -947,15 +966,213 @@ class BaseAgent(ABC):
         else:
             self.act.append(action)
         return self.act
+    
+    # 这一部分是从尚霖那里抄来的，维护一些探测的东西。
+    def update_unscouted(self, cur_hex, unit_type):
+        # 这个看起来是要对所有的己方装备都调用一遍才是对的。
+        scouted = set(self.area) - self.unscouted
+        new_ob = self.map.get_ob_area(cur_hex, unit_type, scouted) & set(self.area)
+        last_unscout_num = len(self.unscouted)
+        self.unscouted -= new_ob
+        cur_unscout_num = len(self.unscouted)
+        
+        # 顺道把奖励地图更新了
+        for h in new_ob:
+            self.repeat_map[h] += 0.2
+        if cur_hex in self.area:
+            self.repeat_map[cur_hex] += 0.2
+        
+        # 顺道把可疑区域一块更新了
+        last_suspect_num = len(self.suspected)
+        self.suspected -= new_ob
+        cur_suspect_num = len(self.suspected)
+        
+        # # 丑陋的air_traj更新1
+        # if last_suspect_num > cur_suspect_num:
+        #     for obj_id, traj in self.air_traj.items():
+        #         if traj and traj[0] in new_ob:
+        #             traj.pop(0)
+        #             if cur_suspect_num > 0:
+        #                 # self.re_allocate_air(agent)
+        #                 pass
+        return last_suspect_num > cur_suspect_num or last_unscout_num > cur_unscout_num
 
+    def scout_setup(self, task):
+        air_start = []
+        # print("ScoutExecutor init, agent info:")
+        for obj_id, unit in self.owned.items():
+            print(f"obj_id: {obj_id}, unit: {unit['type']}")
+            if unit["type"] == BopType.Aircraft:
+                self.air_num += 1
+                self.air_traj[obj_id] = []
+                air_start.append(unit["cur_hex"])
+        rough_start = sum(air_start) // len(air_start)
+
+        self.area = list(self.map.get_grid_distance(task["hex"], 0, task["radius"]))
+        self.area.sort()
+        self.unscouted = set(self.area.copy())
+        # for point in self.area:
+        #     air_ob_area = agent.map.get_ob_area2(point, BopType.Aircraft, BopType.Vehicle)
+        #     self.air_ob[point] = len(air_ob_area)
+        #     car_ob_area = agent.map.get_ob_area2(point, BopType.Vehicle, BopType.Vehicle)
+        #     self.car_ob[point] = len(car_ob_area)
+        # self.max_air_ob_num = max(self.air_ob.values())
+        # self.max_car_ob_num = max(self.car_ob.values())
+        # self.area2xy()
+        # self.allocate_traj(rough_start, task["hex"])
+        self.repeat_map = {key: 0 for key in self.area}
+        self.threat_map = {key: 0 for key in self.area}
+
+    def crossfire_setup(self):
+        air_start = []
+        print("copy from shanglin")
+        for obj_id, unit in self.owned.items():
+            print(f"obj_id: {obj_id}, unit: {unit['type']}")
+            if unit["type"] == BopType.Aircraft:
+                self.air_num += 1
+                self.air_traj[obj_id] = []
+                air_start.append(unit["cur_hex"])
+        rough_start = sum(air_start) // len(air_start)
+
+        # self.area = list(self.map.get_grid_distance(task["hex"], 0, task["radius"]))
+        pos_ave = self.get_pos_average(self.status["operators"])
+        pos_center = self.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
+        
+        self.area = list(self.map.get_grid_distance(pos_center, 0, 30))
+        self.area.sort()
+        self.scouted = set()
+        self.unscouted = set(self.area.copy())
+        self.repeat_map = {key: 0 for key in self.area}
+        self.threat_map = {key: 0 for key in self.area}
+        self.ob = self.observation
+    
+    def defend_setup(self, task):
+        pass 
+    def update_unit(self, obj_id, cur_hex):
+        """更新算子的当前和上一格位置信息"""
+        if obj_id not in self.units.keys():
+            self.units[obj_id] = [-1, cur_hex]
+        else:
+            self.units[obj_id][0] = self.units[obj_id][1]
+            self.units[obj_id][1] = cur_hex
+    def guess_enemy(self, cur_units):
+        # xxh加的
+        if self.env_name=="cross_fire":
+            # cur_units = copy.deepcopy(self.status["operators"])
+            # old_units = copy.deepcopy(self.status_old["operators"])
+            # self.units = old_units
+            # suanle,zenme kuai,zenme lai
+            old_units = set(self.units.keys())
+        elif self.env_name=="scout":
+            old_units = set(self.units.keys())
+        else:
+            raise Exception("undefined yet in guess_enemy")
+        
+        diff = list(old_units - cur_units)
+        for missed_unit in diff:
+            area_last = self.can_you_shoot_me(self.units[missed_unit][0])
+            area_cur = self.can_you_shoot_me(self.units[missed_unit][1])
+            tmp_suspect = area_cur - area_last & self.unscouted - set(self.enemy_pos.values())
+
+            if len(self.suspected) == 0:
+                self.suspected = tmp_suspect
+            else:
+                inter = self.suspected & tmp_suspect
+                if len(inter) > 0:
+                    # 可能是两簇角点导致误判，暂时只通过精准化unscouted减小suspected范围
+                    self.suspected = inter
+                else:
+                    self.suspected = self.suspected | tmp_suspect
+            self.units.pop(missed_unit)
+            print(f"missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}")
+
+    def can_you_shoot_me(self, cur_hex):
+        
+        if cur_hex == -1:
+            return set()
+
+        cond = self.map.basic[cur_hex // 100][cur_hex % 100]["cond"]
+        radius = 12 if cond in [CondType.Jungle, CondType.City] else 20
+        area = list(self.map.get_grid_distance(cur_hex, 0, radius))
+        # area.sort()
+        shoot_area = []
+        for h in area:
+            if self.map.can_see(cur_hex, h, 0):
+                shoot_area.append(h)
+        return set(shoot_area)
+    
+    def add_unscout_area(self):
+        # 这个用来动态更新探测范围，根据我方装备的情况往里面加点。
+        # 应该是把一定距离内的、我方装备还没探测到的点都加进去。
+
+        # 先求一下“一定距离内的点”
+        units = self.status["operators"]
+        UAV_units = self.get_UAV_units() 
+        others_units = [unit for unit in units if(unit not in UAV_units)]
+        scouted = set(self.area) - self.unscouted
+        for unit in others_units:
+
+            # area_concern_single = self.map.get_grid_distance(unit["cur_hex"], 0, 20)
+            area_concern_single = self.can_you_shoot_me(self.get_pos(unit))
+            # 原则上这里不应该只是范围内，应该是“能通视这个点的位置”。但是范围内也有其合理性，可能得试试怎么说。
+
+            # 然后从中减去已经探到的。
+            area_concern_single = area_concern_single - scouted 
+            # 然后合并到unscouted里面去
+            self.unscouted = self.unscouted | area_concern_single
+
+    def update_from_shanglin(self):
+        # 原则上这个作为尚霖那个和我的这堆的唯一的一个接口，其他地方尽量别乱改尚霖这套的里面的东西。
+          
+                   
+        # 这些是demo那个里面的，尚霖用过里面的东西。
+        self.ob = self.observation
+        self.update_time()
+        self.update_tasks()
+        self.update_all_units()
+        self.update_valid_actions()
+
+
+        if self.num<2:
+            if self.env_name=="cross_fire":
+                self.crossfire_setup()
+            elif self.env_name=="scout":
+                self.scout_setup()
+            elif self.env_name=="defend":
+                self.defend_setup()
+        
+        # 这里需要来一个东西，考虑往那个set里面增加一些需要探测的点。
+        self.add_unscout_area()
+
+        # 更新一下探测信息
+
+        for unit in self.status["operators"]:
+            if unit["cur_pos"] == 0: # 完成一格移动
+                cur_hex = unit["cur_hex"]
+                self.update_unit(unit["obj_id"], cur_hex)
+                self.update_unscouted(cur_hex, unit["type"])
+                # print(f"remain: {len(self.unscouted)}")           
+        
+        # 更新一下被打信息
+        if len(self.owned) < len(self.units):
+            cur_units = set(self.owned.keys())
+            self.guess_enemy(cur_units)
+
+        # 原则上到这里就可以读self.unscouted来飞无人机了。
+
+        
     # then abstract_state
     # abstract_state and related functinos
+    
+
     def Gostep_abstract_state(self,**kargs):
         # 先更新一遍观测的东西，后面用到再说
         self.detected_state = self.get_detected_state(self.status)
         # self.update_detectinfo(self.detected_state)  # 记录一些用于搞提前量的缓存
 
         self.update_field() # 这个是更新一下那个用于避障的标量场。
+
+        self.update_from_shanglin() # 要搞那可以搞的呀
 
         # 清理一下abstract_state,被摧毁了的东西就不要在放在里面了.
         abstract_state_new = {}
@@ -1079,6 +1296,10 @@ class BaseAgent(ABC):
         # 不对，这可恶的六角格，算不了矢量场啊好像。
         # 总之这个放在GoStep里。
 
+        # 需要新加一个东西来计算can_shoot的计算结果，不然好多点都会重复计算，就比较傻逼了。
+        if self.num <2:
+            self.calculated_can_shoot = {} # {pos_int:flag_can_shoot}
+
         # 选定所有单位周围的两个格子，然后去重
         distance_start = 0 
         distance_end = 2 
@@ -1135,19 +1356,29 @@ class BaseAgent(ABC):
                 # 有己方单位存活，认为那附近安全一点。负的威胁度
                 field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
 
-        #  TODO: using tongshi to modify the field further.
-        for unit in self.detected_state:
-            # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
-            enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
-            enemy_type = unit["sub_type"]
-            my_type = 2 # 直接用车辆了，
-            # 调地图，看是不是会被打到。
-            flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
-            if flag_can_shoot>0:
-                # field_value = field_value + a1*100 / (a2 + jvli)
-                # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
-                field_value = field_value + a1*100 / (a2 )
-            
+        #  using tongshi to modify the field further.
+        # 如果已经算过了，就别重新算一遍这个了。
+        if pos_single in self.calculated_can_shoot:
+            flag_can_shoot = self.calculated_can_shoot[pos_single]
+        else:
+            # 要是没算过那再算一下。
+            flag_can_shoot = 0 
+            for unit in self.detected_state:
+                # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
+                enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
+                enemy_type = unit["sub_type"]
+                my_type = 2 # 直接用车辆了，
+                # 调地图，看是不是会被打到。
+                flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+                if flag_can_shoot>0:
+                    break
+            # 更新到存的那个里面。原则上已经可以少算
+            self.calculated_can_shoot[pos_single] = flag_can_shoot
+
+        if flag_can_shoot>0:
+            # field_value = field_value + a1*100 / (a2 + jvli)
+            # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
+            field_value = field_value + a1*100 / (a2 )            
         return field_value
 
     def update_detectinfo(self, detectinfo):
@@ -1579,7 +1810,7 @@ class BaseAgent(ABC):
         elif role == "knight":
             if jvli ==0:
                 # then wait, don't do anything include set_none.
-                print("knight is waiting")
+                # print("knight is waiting")
                 self.abstract_state[attacker_ID]["waiting_num"] = self.abstract_state[attacker_ID]["waiting_num"] -1 
                 if self.abstract_state[attacker_ID]["waiting_num"] == 0:
                     # its king is not exists anymore.

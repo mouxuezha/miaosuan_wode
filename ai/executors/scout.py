@@ -362,7 +362,7 @@ class ScoutExecutor:
         cond = agent.map.basic[cur_hex // 100][cur_hex % 100]["cond"]
         radius = 12 if cond in [CondType.Jungle, CondType.City] else 20
         area = list(agent.map.get_grid_distance(cur_hex, 0, radius))
-        area.sort()
+        # area.sort()
         shoot_area = []
         for h in area:
             if agent.map.can_see(cur_hex, h, 0):
