@@ -1172,7 +1172,7 @@ class BaseAgent(ABC):
 
         self.update_field() # 这个是更新一下那个用于避障的标量场。
 
-        self.update_from_shanglin() # 要搞那可以搞的呀
+        # self.update_from_shanglin() # 开了这个之后卡的一笔，多半是有问题因为尚霖那里都不卡。
 
         # 清理一下abstract_state,被摧毁了的东西就不要在放在里面了.
         abstract_state_new = {}
