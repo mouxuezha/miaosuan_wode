@@ -199,8 +199,8 @@ if __name__ == "__main__":
     jieguo = record_result()
     jieguo.record_config("debug defend, merge")
     for i in range(10):
-        shishi = auto_run(env_name="defend")
-        # shishi = auto_run(env_name="crossfire")
+        # shishi = auto_run(env_name="defend")
+        shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")
         all_states_single,zip_name = shishi.run_single()
         jieguo.get_result_single(all_states_single,zip_name)
