@@ -1023,7 +1023,7 @@ class BaseAgent(ABC):
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
 
-    def crossfire_setup(self, task):
+    def crossfire_setup(self):
         air_start = []
         print("copy from shanglin")
         for obj_id, unit in self.owned.items():
