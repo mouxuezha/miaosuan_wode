@@ -172,9 +172,11 @@ class ScoutExecutor:
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
         car_init_radius = agent.map.get_distance(task["hex"], car_start_center) - \
-            task["radius"] // 4 * 3
-        self.car_to_detect = self.unscouted & \
-            agent.map.get_grid_distance(car_start_center, 0, car_init_radius)
+            task["radius"] // 3 * 2
+        while not self.car_to_detect:
+            self.car_to_detect = self.unscouted & \
+                agent.map.get_grid_distance(car_start_center, 0, car_init_radius)
+            car_init_radius += 2
         print(f"init car_to_detect: {len(self.car_to_detect)}")
         # self.qrs_points = np.array([rc2qrs(hex2rc(point)) for point in self.area])
 
@@ -307,16 +309,19 @@ class ScoutExecutor:
 
     def update_car_to_detect(self, agent):
         self.car_to_detect = set()
-        for _, unit in agent.valid_units.items():
-            if unit["type"] == BopType.Vehicle:
-                self.car_to_detect |= agent.map.get_grid_distance(
-                    unit["cur_hex"], 0, 9
-                )    
-        for point in self.suspected:
-            self.car_to_detect |= agent.map.get_ob_area2(
-                point, BopType.Vehicle, BopType.Vehicle, passive=True
-            )
-        self.car_to_detect &= self.unscouted
+        radius = 9
+        while not self.car_to_detect:
+            for _, unit in agent.valid_units.items():
+                if unit["type"] == BopType.Vehicle:
+                    self.car_to_detect |= agent.map.get_grid_distance(
+                        unit["cur_hex"], 0, radius
+                    )    
+            for point in self.suspected:
+                self.car_to_detect |= agent.map.get_ob_area2(
+                    point, BopType.Vehicle, BopType.Vehicle, passive=True
+                )
+            self.car_to_detect &= self.unscouted
+            radius += 3
         # self.car_to_detect &= set(self.area)
         # self.car_to_detect |= self.unscouted
         # if not self.car_to_detect:
