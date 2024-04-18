@@ -406,38 +406,30 @@ class BaseAgent(ABC):
         self.detected_state = []
         units = state["operators"]
         
-        # for unit in units:
-        #     detected_IDs = unit["see_enemy_bop_ids"]
-        #     for detected_ID in detected_IDs:
-        #         detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
-        #         self.detected_state = self.detected_state + detected_state_single
 
         self.status_old=copy.deepcopy(self.status)
 
         color_enemy = 1 - self.color
         detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
+         
+        units_ids_old = set() 
+        units_ids_new = set()
 
-        
-        
-        # 去重和更新。
-        # for unit_old in self.detected_state:
+        for unit_old in self.detected_state:
+            units_ids_old.add(unit_old["obj_id"])
         for unit in detected_state_single:
-            flag_updated = False
-            # for unit in detected_state_single:
-            for unit_old in self.detected_state:
-                if unit_old["obj_id"] == unit["obj_id"]:
-                    # 说明这个是已经探索过的了，那就用新的
+            units_ids_new.add(unit["obj_id"])
+        
+        units_ids_commen = units_ids_old & units_ids_new 
+        units_ids_new_only = units_ids_new - units_ids_old
+        units_ids_old_only = units_ids_old - units_ids_new
+        
+        for unit_id in units_ids_new_only:
+            for unit in detected_state_single:
+                if unit["obj_id"] == unit_id:
                     detected_state_new.append(unit)
-                    flag_updated == True
                     break
-            if flag_updated == False:
-                # 说明是new detected.
-                # 这个会高估威胁，打爆了的敌人会继续存在于态势中。
-                # 但是crossfire里面真能打爆敌人的场景也不是很多，所以也就罢了。
-                detected_state_new.append(unit)
-            
-
-                                
+                     
         self.detected_state = detected_state_new
         # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
         geshu_new = len(self.detected_state)
@@ -1359,27 +1351,29 @@ class BaseAgent(ABC):
 
         #  using tongshi to modify the field further.
         # 如果已经算过了，就别重新算一遍这个了。
-        if pos_single in self.calculated_can_shoot:
-            flag_can_shoot = self.calculated_can_shoot[pos_single]
-        else:
-            # 要是没算过那再算一下。
-            flag_can_shoot = 0 
-            for unit in self.detected_state:
-                # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
-                enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
-                enemy_type = unit["sub_type"]
-                my_type = 2 # 直接用车辆了，
-                # 调地图，看是不是会被打到。
-                flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
-                if flag_can_shoot>0:
-                    break
-            # 更新到存的那个里面。原则上已经可以少算
-            self.calculated_can_shoot[pos_single] = flag_can_shoot
+        flag_able_can_shoot = True
+        if flag_able_can_shoot:
+            if pos_single in self.calculated_can_shoot:
+                flag_can_shoot = self.calculated_can_shoot[pos_single]
+            else:
+                # 要是没算过那再算一下。
+                flag_can_shoot = 0 
+                for unit in self.detected_state:
+                    # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
+                    enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
+                    enemy_type = unit["sub_type"]
+                    my_type = 2 # 直接用车辆了，
+                    # 调地图，看是不是会被打到。
+                    flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+                    if flag_can_shoot>0:
+                        break
+                # 更新到存的那个里面。原则上已经可以少算
+                self.calculated_can_shoot[pos_single] = flag_can_shoot
+            if flag_can_shoot>0:
+                # field_value = field_value + a1*100 / (a2 + jvli)
+                # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
+                field_value = field_value + a1 / (a2)        
 
-        if flag_can_shoot>0:
-            # field_value = field_value + a1*100 / (a2 + jvli)
-            # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
-            field_value = field_value + a1 / (a2)            
         return field_value
 
     def update_detectinfo(self, detectinfo):
