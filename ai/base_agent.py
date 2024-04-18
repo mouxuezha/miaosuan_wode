@@ -406,38 +406,30 @@ class BaseAgent(ABC):
         self.detected_state = []
         units = state["operators"]
         
-        # for unit in units:
-        #     detected_IDs = unit["see_enemy_bop_ids"]
-        #     for detected_ID in detected_IDs:
-        #         detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
-        #         self.detected_state = self.detected_state + detected_state_single
 
         self.status_old=copy.deepcopy(self.status)
 
         color_enemy = 1 - self.color
         detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
+         
+        units_ids_old = set() 
+        units_ids_new = set()
 
-        
-        
-        # 去重和更新。
-        # for unit_old in self.detected_state:
+        for unit_old in self.detected_state:
+            units_ids_old.add(unit_old["obj_id"])
         for unit in detected_state_single:
-            flag_updated = False
-            # for unit in detected_state_single:
-            for unit_old in self.detected_state:
-                if unit_old["obj_id"] == unit["obj_id"]:
-                    # 说明这个是已经探索过的了，那就用新的
+            units_ids_new.add(unit["obj_id"])
+        
+        units_ids_commen = units_ids_old & units_ids_new 
+        units_ids_new_only = units_ids_new - units_ids_old
+        units_ids_old_only = units_ids_old - units_ids_new
+        
+        for unit_id in units_ids_new_only:
+            for unit in detected_state_single:
+                if unit["obj_id"] == unit_id:
                     detected_state_new.append(unit)
-                    flag_updated == True
                     break
-            if flag_updated == False:
-                # 说明是new detected.
-                # 这个会高估威胁，打爆了的敌人会继续存在于态势中。
-                # 但是crossfire里面真能打爆敌人的场景也不是很多，所以也就罢了。
-                detected_state_new.append(unit)
-            
-
-                                
+                     
         self.detected_state = detected_state_new
         # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
         geshu_new = len(self.detected_state)
