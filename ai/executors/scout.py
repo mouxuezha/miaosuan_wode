@@ -282,7 +282,7 @@ class ScoutExecutor:
             self.air_traj[obj_id_allo].insert(0, new_traj_point)
             # self.suspected.remove(new_traj_point)
             print(
-                f"***reallocate obj: {obj_id_allo}, new traj: {self.air_traj[obj_id_allo][:3]}***"
+                f"***reallocate obj: {obj_id_allo}, new traj: {self.air_traj[obj_id_allo][:4]}***"
             )
 
     def update_unit(self, obj_id, cur_hex):
@@ -337,7 +337,7 @@ class ScoutExecutor:
 
     def update_car_dest(self, agent):
         tmp_dest = set(self.car_cluster.copy())
-        print(f"------car cluster: {self.car_cluster}------")
+        # print(f"------car cluster: {self.car_cluster}------")
         ids = []
         for obj_id, dest in self.car_dest.items():
             point_to_remove = []
@@ -352,7 +352,7 @@ class ScoutExecutor:
             d, _ = self.get_nearest(agent, agent.owned[obj_id]["cur_hex"], tmp_dest)
             self.car_dest[obj_id] = d
             tmp_dest.discard(d)
-        print(f"------car dest: {self.car_dest}------")
+        # print(f"------car dest: {self.car_dest}------")
 
     def update_unscouted(self, agent, cur_hex, unit_type):
         scouted = set(self.area) - self.unscouted
@@ -374,12 +374,10 @@ class ScoutExecutor:
 
         # 丑陋的air_traj更新1
         if last_suspect_num > cur_suspect_num:
-            for obj_id, traj in self.air_traj.items():
-                if traj and traj[0] in new_ob:
+            for _, traj in self.air_traj.items():
+                while traj and traj[0] in new_ob:
                     point = traj.pop(0)
                     print(f"------point {point} has been observed------")
-                    if cur_suspect_num > 0:
-                        self.re_allocate_air(agent)
         return last_suspect_num > cur_suspect_num or last_unscout_num > cur_unscout_num
 
     def can_you_shoot_me(self, agent, cur_hex):
@@ -556,7 +554,7 @@ class ScoutExecutor:
                     if self.air_traj[obj_id] and cur_hex == self.air_traj[obj_id][0]:
                         self.air_traj[obj_id].pop(0)
                         print(
-                            f"air {obj_id} cur_hex: {cur_hex}, air_traj: {self.air_traj[obj_id][:3]}"
+                            f"air {obj_id} arrived {cur_hex}, air_traj: {self.air_traj[obj_id][:3]}"
                         )
                 # print(f"remain: {len(self.unscouted)}")
             if unit["type"] == BopType.Vehicle:
@@ -570,13 +568,19 @@ class ScoutExecutor:
             self.car_to_detect |= agent.map.get_ob_area2(
                 point, BopType.Vehicle, BopType.Vehicle, passive=True
             )
-        self.car_to_detect |= self.unscouted
         self.car_to_detect &= set(self.area)
+        if not self.car_to_detect:
+            self.car_to_detect = self.unscouted
+        
         if move_flag and change_flag and agent.time.cur_step > 151:
             self.update_cluster(agent)
             self.update_car_dest(agent)
+        
+        if change_flag and self.suspected:
+            print("try reallocate air")
+            self.re_allocate_air(agent)
 
-        if change_flag & agent.time.cur_step > 1401 & len(self.unscouted) < 800:
+        if agent.time.cur_step > 1401 and len(self.unscouted) < 800:
             # print(f"remain {len(self.unscouted)} unscouted: {self.unscouted}")
             print(f"%%%%%%%remain {len(self.unscouted)}%%%%%%%")
             add_p = -1

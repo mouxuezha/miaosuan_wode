@@ -296,6 +296,7 @@ class Map:
             ob_area = np.where(self.ob[mode][:, idx])[0]
         else:
             ob_area = np.where(self.ob[mode][idx, :])[0]
+        ob_area = np.append(ob_area, center)
         ob_area = set(ob_area)
         if constrain_area:
             ob_area &= constrain_area
