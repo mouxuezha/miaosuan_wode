@@ -406,38 +406,30 @@ class BaseAgent(ABC):
         self.detected_state = []
         units = state["operators"]
         
-        # for unit in units:
-        #     detected_IDs = unit["see_enemy_bop_ids"]
-        #     for detected_ID in detected_IDs:
-        #         detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
-        #         self.detected_state = self.detected_state + detected_state_single
 
         self.status_old=copy.deepcopy(self.status)
 
         color_enemy = 1 - self.color
         detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
+         
+        units_ids_old = set() 
+        units_ids_new = set()
 
-        
-        
-        # 去重和更新。
-        # for unit_old in self.detected_state:
+        for unit_old in self.detected_state:
+            units_ids_old.add(unit_old["obj_id"])
         for unit in detected_state_single:
-            flag_updated = False
-            # for unit in detected_state_single:
-            for unit_old in self.detected_state:
-                if unit_old["obj_id"] == unit["obj_id"]:
-                    # 说明这个是已经探索过的了，那就用新的
+            units_ids_new.add(unit["obj_id"])
+        
+        units_ids_commen = units_ids_old & units_ids_new 
+        units_ids_new_only = units_ids_new - units_ids_old
+        units_ids_old_only = units_ids_old - units_ids_new
+        
+        for unit_id in units_ids_new_only:
+            for unit in detected_state_single:
+                if unit["obj_id"] == unit_id:
                     detected_state_new.append(unit)
-                    flag_updated == True
                     break
-            if flag_updated == False:
-                # 说明是new detected.
-                # 这个会高估威胁，打爆了的敌人会继续存在于态势中。
-                # 但是crossfire里面真能打爆敌人的场景也不是很多，所以也就罢了。
-                detected_state_new.append(unit)
-            
-
-                                
+                     
         self.detected_state = detected_state_new
         # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
         geshu_new = len(self.detected_state)
@@ -1723,23 +1715,24 @@ class BaseAgent(ABC):
             # 搞个排序，会相对好一点
             neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
             neighbor_pos_list_selected = neighbor_field_array_sorted[:,0]
+            neighbor_field_list_selected = neighbor_field_array_sorted[:,1]
             # change to int, or there would be type error in map.py
             neighbor_pos_list_selected = neighbor_pos_list_selected.astype(int)
             # using np.int64 would cause trouble.
             neighbor_pos_list_selected = neighbor_pos_list_selected.tolist()
             # 然后根据威胁情况看后面往哪里去。
             a1 =10 
-            if neighbor_pos_list_selected[5] ==0:
+            if neighbor_field_list_selected[5] ==0:
                 # which means all are zero
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-            elif neighbor_pos_list_selected[5]<a1 :
+            elif neighbor_field_list_selected[5]<a1 :
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:6], vector_xy)
-            elif neighbor_pos_list_selected[3]<a1 :
+            elif neighbor_field_list_selected[3]<a1 :
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
-            elif neighbor_pos_list_selected[0]>a1:
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+            elif neighbor_field_list_selected[0]>a1:
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list[0:5], vector_xy)
             else:
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:4], vector_xy)
             # 选出来之后就过去呗。
             self._move_action(attacker_ID, pos_next)
         
