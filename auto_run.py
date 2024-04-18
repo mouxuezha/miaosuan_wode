@@ -198,7 +198,7 @@ def save_replay(replay_name, data):
 if __name__ == "__main__":
     jieguo = record_result()
     jieguo.record_config("debug defend, merge")
-    for i in range(10):
+    for i in range(100):
         # shishi = auto_run(env_name="defend")
         shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")

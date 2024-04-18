@@ -1721,23 +1721,24 @@ class BaseAgent(ABC):
             # 搞个排序，会相对好一点
             neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
             neighbor_pos_list_selected = neighbor_field_array_sorted[:,0]
+            neighbor_field_list_selected = neighbor_field_array_sorted[:,1]
             # change to int, or there would be type error in map.py
             neighbor_pos_list_selected = neighbor_pos_list_selected.astype(int)
             # using np.int64 would cause trouble.
             neighbor_pos_list_selected = neighbor_pos_list_selected.tolist()
             # 然后根据威胁情况看后面往哪里去。
             a1 =10 
-            if neighbor_pos_list_selected[5] ==0:
+            if neighbor_field_list_selected[5] ==0:
                 # which means all are zero
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-            elif neighbor_pos_list_selected[5]<a1 :
+            elif neighbor_field_list_selected[5]<a1 :
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:6], vector_xy)
-            elif neighbor_pos_list_selected[3]<a1 :
+            elif neighbor_field_list_selected[3]<a1 :
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
-            elif neighbor_pos_list_selected[0]>a1:
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+            elif neighbor_field_list_selected[0]>a1:
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list[0:5], vector_xy)
             else:
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:4], vector_xy)
             # 选出来之后就过去呗。
             self._move_action(attacker_ID, pos_next)
         
