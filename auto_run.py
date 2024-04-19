@@ -10,6 +10,7 @@ sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
 from train_env.cross_fire_env import CrossFireEnv
 from train_env.scout_env import ScoutEnv
 from train_env.defend_env import DefendEnv
+from memory_profiler import profile
 
 class auto_run():
     def __init__(self,env_name="crossfire") -> None:
@@ -80,6 +81,7 @@ class auto_run():
         self.config_str = ""
         self.all_games = []
     
+    @profile(stream=open("logs/replays/memory_profiler.log", "w+"))
     def run_single(self):
         # varialbe to build replay
         self.begin = time.time()
