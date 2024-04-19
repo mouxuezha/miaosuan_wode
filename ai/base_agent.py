@@ -678,7 +678,7 @@ class BaseAgent(ABC):
             infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
             if len(infantry_ID_list)==0:
                 # which means no infantry in it.
-                IFV_units_empty.append[IFV_unit]
+                IFV_units_empty.append(IFV_unit)
         
         # the little cars
         xiaoche_units = self.select_by_type(units_input,key="sub_type",value=4)
