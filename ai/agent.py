@@ -382,6 +382,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             else:
                 target_pos_list = self.target_pos_list
         
+
+
         # 强行判断是否到了，到了就改成目标点。越写越乱越写越丑了，但是先不管了，能用就行。
         pos_ave = self.get_pos_average(units)
         jvli = self.distance(pos_ave, target_pos_list[0])
@@ -391,27 +393,34 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 还得再来个强行判断，以防止出现超级大回环。就是距离差不多了就直着过去了。
         jvli = self.distance(pos_ave, self.target_pos)
 
-        for unit in units:
-            # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
-            target_pos_list_temp = copy.deepcopy(target_pos_list)
-            for i in range(len(target_pos_list_temp)-1):
-                target_pos_single = target_pos_list_temp[i]
-                pos_single = self.get_pos(unit)
-                if pos_single==target_pos_list_temp[-1]:
-                    # arrived
-                    break
-                if pos_single==target_pos_single:
-                    # 说明到了这个点了，那就去下一个点。
-                    target_pos = target_pos_list_temp[i+1]
-                    self.set_move_and_attack(unit,target_pos,model="force")
-                    del target_pos_list_temp[i]
-                    break 
-                else:
-                    # 没到的话就无事发生。
-                    # no, if not arrived, then go there.
-                    self.set_move_and_attack(unit,target_pos_single,model="force")
-                    # del target_pos_list_temp[i]
-                    break 
+        # if there is no more time, then just chong.
+        time_assume = round(jvli * 20 * 1.1)
+        if time_assume < (self.end_time - self.num):
+            # then just chong, without using naozi
+            for unit in units:
+                self.set_move_and_attack(unit,self.target_pos,model="force")
+        else:        
+            for unit in units:
+                # 如果到了某一个点，就去下一个点。搞成通用的，以防未来需要很多个路径点的时候不好搞。
+                target_pos_list_temp = copy.deepcopy(target_pos_list)
+                for i in range(len(target_pos_list_temp)-1):
+                    target_pos_single = target_pos_list_temp[i]
+                    pos_single = self.get_pos(unit)
+                    if pos_single==target_pos_list_temp[-1]:
+                        # arrived
+                        break
+                    if pos_single==target_pos_single:
+                        # 说明到了这个点了，那就去下一个点。
+                        target_pos = target_pos_list_temp[i+1]
+                        self.set_move_and_attack(unit,target_pos,model="force")
+                        del target_pos_list_temp[i]
+                        break 
+                    else:
+                        # 没到的话就无事发生。
+                        # no, if not arrived, then go there.
+                        self.set_move_and_attack(unit,target_pos_single,model="force")
+                        # del target_pos_list_temp[i]
+                        break 
         return self.target_pos_list
                 
     def final_juhe(self, units):
