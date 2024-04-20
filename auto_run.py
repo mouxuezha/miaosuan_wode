@@ -146,6 +146,7 @@ class auto_run():
 
     def run_single_with_time_limit(self,time_limit = 114.514):
         # 加了超时暂停的run_single,用于调试程序。
+        print("auto_run: 开始运行,超时时间:",time_limit,"s, 超时暂停，按Ctrl+C继续")
         signal.signal(signal.SIGALRM, self.handler)
         signal.alarm(time_limit)
         signal.signal(signal.SIGINT, self.handler2)
@@ -278,8 +279,8 @@ if __name__ == "__main__":
         # shishi = auto_run(env_name="crossfire")
         # # shishi = auto_run(env_name="scout")
         # all_states_single,zip_name = shishi.run_single()
-        # # all_states_single,zip_name = shishi.run_single_with_time_limit(10)
-        # jieguo.get_result_single(all_states_single,zip_name)
+        all_states_single,zip_name = shishi.run_single_with_time_limit(600)
+        jieguo.get_result_single(all_states_single,zip_name)
         
         # multi thread model
         jieguo.run_multi(2, "crossfire")
