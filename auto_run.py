@@ -132,14 +132,23 @@ class auto_run():
         # pass
     
     def handler(self, signum, frame):
-        print("auto_run: 抓到超时了，但是生活还要继续，继续继续...")
+        print("auto_run: 抓到超时了,press Ctrl+C to continue")
         signal.pause()
+        # break point here
+        print("但是生活还要继续，继续继续...")
+        pass 
         # raise TimeoutError()
     
+    def handler2(self, signum, frame):
+        print("auto_run: 抓到超时了,continue")
+        signal.alarm(0)
+        pass 
+
     def run_single_with_time_limit(self,time_limit = 114.514):
         # 加了超时暂停的run_single,用于调试程序。
         signal.signal(signal.SIGALRM, self.handler)
         signal.alarm(time_limit)
+        signal.signal(signal.SIGINT, self.handler2)
         self.all_states, zip_name = self.run_single()
         return self.all_states, zip_name
 
@@ -266,13 +275,14 @@ if __name__ == "__main__":
 
         # # single thread model
         # shishi = auto_run(env_name="defend")
-        # shishi = auto_run(env_name="crossfire")
+        shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")
         # all_states_single,zip_name = shishi.run_single()
-        # jieguo.get_result_single(all_states_single,zip_name)
+        all_states_single,zip_name = shishi.run_single_with_time_limit(10)
+        jieguo.get_result_single(all_states_single,zip_name)
         
         # multi thread model
-        jieguo.run_multi(2, "crossfire")
+        # jieguo.run_multi(2, "crossfire")
 
     jieguo.get_result_all(jieguo.all_games)
 
