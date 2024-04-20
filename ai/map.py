@@ -1,8 +1,10 @@
+import os
 import heapq
 import random
 import numpy as np
+
 from .const import BopType, CondType
-import os
+from .tools import time_decorator
 
 ob_range = [
     [10, 25, 1],
