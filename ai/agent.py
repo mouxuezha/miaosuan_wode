@@ -750,7 +750,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.step_cross_fire()
             self.step_cross_fire_test()
         elif self.env_name=="scout":
-            self.act = self.step_scout()
+            self.step_scout()
         elif self.env_name=="defend":
             self.Gostep_abstract_state()
             self.step_defend()
@@ -987,6 +987,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
     def step_scout(self):
         # unfinished yet.
+        self.act = []
         self.ob = self.observation
         self.update_time()
         self.update_tasks()
@@ -995,12 +996,11 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.update_all_units()
         self.update_valid_actions()
 
-        self.actions = []  # 将要返回的动作容器
+        # self.actions = []  # 将要返回的动作容器
         self.prefer_shoot()  # 优先选择射击动作
 
         for task in self.tasks:  # 遍历每个分配给本席位任务
-            self.task_executors[task["type"]].execute(task, self)
-        return self.actions   
+            self.task_executors[task["type"]].execute(task, self)  
     
     ###################### defend  ############################    
     @time_decorator

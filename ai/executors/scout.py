@@ -170,7 +170,7 @@ class ScoutExecutor:
         self.max_air_ob_num = max(self.air_ob.values())
         self.max_car_ob_num = max(self.car_ob.values())
         self.area2xy()
-        self.allocate_traj(air_start_center, task["hex"])
+        self.allocate_traj(agent, air_start_center, task["hex"])
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
         car_init_radius = agent.map.get_distance(task["hex"], car_start_center) - \
@@ -192,7 +192,7 @@ class ScoutExecutor:
             self.xy_points.append(points[points[:, 0] == i])
         return self.xy_points
 
-    def allocate_traj(self, start, center):
+    def allocate_traj(self, agent, start, center):
         """将侦察区域分配给各个无人机"""
         start_row = start // 100
         center_row = center // 100
@@ -211,19 +211,14 @@ class ScoutExecutor:
         for i in layers:
             j = i - first_row
             if flag == 0:
-                total_traj.append(
-                    rc2hex(self.xy_points[j][1][0], self.xy_points[j][1][1])
-                )
-                total_traj.append(
-                    rc2hex(self.xy_points[j][-2][0], self.xy_points[j][-2][1])
-                )
+                tmp_start = rc2hex(self.xy_points[j][1][0], self.xy_points[j][1][1])
+                tmp_end = rc2hex(self.xy_points[j][-2][0], self.xy_points[j][-2][1])
             else:
-                total_traj.append(
-                    rc2hex(self.xy_points[j][-2][0], self.xy_points[j][-2][1])
-                )
-                total_traj.append(
-                    rc2hex(self.xy_points[j][1][0], self.xy_points[j][1][1])
-                )
+                tmp_start = rc2hex(self.xy_points[j][-2][0], self.xy_points[j][-2][1])
+                tmp_end = rc2hex(self.xy_points[j][1][0], self.xy_points[j][1][1])
+            if total_traj:
+                total_traj += agent.map.gen_move_route(total_traj[-1], tmp_start, 3)
+            total_traj += agent.map.gen_move_route(tmp_start, tmp_end, 3)
             flag = 1 - flag
         print(f"total traj: {total_traj}")
         split = len(total_traj) // self.air_num
@@ -269,7 +264,7 @@ class ScoutExecutor:
         根据可疑区域重新分配无人机的侦察路径
         有车被打掉了或者suspected范围减小后调用
         """
-        # TODO:这里假设只有一簇可疑区域，派遣一架无人机的情况
+        # TODO:暂时假设只有一簇可疑区域，派遣一架无人机的情况
         tmp = list(self.suspected)
         center = sum(tmp) // len(tmp)
         dist = []
@@ -292,9 +287,7 @@ class ScoutExecutor:
         # if new_traj_point not in self.air_traj[dist[0][0]] and \
         #     new_traj_point not in agent.owned[dist[0][0]]["move_path"]:
         
-        if not self.air_traj[obj_id_allo] or new_traj_point not in self.future_ob_area(agent, 
-            agent.owned[obj_id_allo], self.air_traj[obj_id_allo][0]
-        ):
+        if not self.air_traj[obj_id_allo] or new_traj_point not in self.air_traj[obj_id_allo]:
             # self.air_traj[obj_id_allo].insert(0, agent.owned[obj_id_allo]["cur_hex"])
             self.air_traj[obj_id_allo].insert(0, new_traj_point)
             # self.suspected.remove(new_traj_point)
@@ -310,7 +303,6 @@ class ScoutExecutor:
             self.units[obj_id][0] = self.units[obj_id][1]
             self.units[obj_id][1] = cur_hex
 
-    @time_decorator
     def update_car_to_detect(self, agent):
         self.car_to_detect = set()
         radius = 9
@@ -369,7 +361,7 @@ class ScoutExecutor:
         if len(self.car_xy_score) <= n:
             self.car_cluster = list(self.car_to_detect)
         else:
-            kmeans = KMeans(n_clusters=n).fit(self.car_xy_score[:, :2])
+            kmeans = KMeans(n_clusters=n, tol=1e-3, max_iter=100).fit(self.car_xy_score[:, :2])
             clusters = kmeans.labels_
             for i in range(n):
                 clusters_points = self.car_xy_score[clusters == i]
@@ -397,9 +389,10 @@ class ScoutExecutor:
             tmp_dest.discard(d)
         # print(f"------car dest: {self.car_dest}------")
 
+    @time_decorator
     def update_unscouted(self, agent, cur_hex, unit_type):
         # scouted = set(self.area) - self.unscouted
-        new_ob = set(self.area) & agent.map.get_ob_area2(
+        new_ob = self.unscouted & agent.map.get_ob_area2(
             cur_hex, unit_type, BopType.Vehicle)
         last_unscout_num = len(self.unscouted)
         self.unscouted -= new_ob
@@ -419,12 +412,8 @@ class ScoutExecutor:
 
         # 丑陋的air_traj更新1
         if last_suspect_num > cur_suspect_num:
-            for obj_id, traj in self.air_traj.items():
-                next_ob = set()
-                if traj:
-                    next_ob = self.future_ob_area(agent, agent.owned[obj_id], traj[0])
-                # while traj and traj[0] in excluded_suspect:
-                while traj and next_ob & self.unscouted == next_ob:
+            for obj_id, traj in self.air_traj.items():                
+                while traj and traj[0] in excluded_suspect:
                     point = traj.pop(0)
                     print(f"------point {point} has been observed------")
         return last_suspect_num > cur_suspect_num, last_unscout_num > cur_unscout_num
@@ -462,6 +451,7 @@ class ScoutExecutor:
                 farthest_hex = h
         return farthest_hex
 
+    @time_decorator
     def guess_enemy(self, cur_units, agent):
         old_units = set(self.units.keys())
         diff = list(old_units - cur_units)
@@ -585,9 +575,10 @@ class ScoutExecutor:
                 destination = self.air_traj[obj_id][0]
             else:
                 destination = self.get_farthest(agent, cur_hex, self.unscouted)
+                # TODO:改成nearest对比下得分
             return destination
 
-        # 车辆的侦察逻辑，优先可疑区域其次未探索，暂时随机选点，后续避开已知敌人射程？
+        # 车辆的侦察逻辑，优先可疑区域其次未探索，暂时随机选点
         def vehicle_scout(obj_id):
             try_dest = self.car_dest.get(obj_id)
             if try_dest != -1 and try_dest in self.unscouted:
@@ -633,9 +624,7 @@ class ScoutExecutor:
                 if unit["type"] == BopType.Aircraft:
                     if self.air_traj[obj_id] and cur_hex == self.air_traj[obj_id][0]:
                         self.air_traj[obj_id].pop(0)
-                        print(
-                            f"air {obj_id} arrived {cur_hex}, air_traj: {self.air_traj[obj_id][:3]}"
-                        )
+                        # print(f"air {obj_id} arrived {cur_hex}, air_traj: {self.air_traj[obj_id][:3]}")
                 # print(f"remain: {len(self.unscouted)}")
             if unit["type"] == BopType.Vehicle:
                 if obj_id not in self.car_dest.keys():
@@ -683,7 +672,7 @@ class ScoutExecutor:
                 and ActType.Fork in agent.valid_actions[obj_id]
             ):
                 # 车辆优先解聚
-                agent.actions.append(agent.act_gen.fork(obj_id))
+                agent.act.append(agent.act_gen.fork(obj_id))
                 agent.flag_act[obj_id] = True
                 continue
 
@@ -703,5 +692,5 @@ class ScoutExecutor:
                 route = route[:4]
             if route:
                 # agent.actions.append(agent.act_gen.move(obj_id, route))
-                agent.actions.append(agent.act_gen.move(obj_id, route[:2]))
+                agent.act.append(agent.act_gen.move(obj_id, route))
                 agent.flag_act[obj_id] = True

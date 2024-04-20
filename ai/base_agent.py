@@ -2198,7 +2198,7 @@ class BaseAgent(ABC):
                 act = self.act_gen.shoot(
                     obj_id, best["target_obj_id"], best["weapon_id"]
                 )
-                self.actions.append(act)
+                self.act.append(act)
                 self.flag_act[obj_id] = True
         
 @dataclass
