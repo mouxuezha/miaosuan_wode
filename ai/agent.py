@@ -936,23 +936,21 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         
         # F2A.
         # if jieju_flag == True and self.num<800:
+        qianpai_units = self.get_qianpai_units()
+        others2_units = [unit for unit in units if (unit not in qianpai_units)]
         if jieju_flag == True and jieju_flag2==True:
-            if self.num < 200:
-                model="normal"
-            else:
-                model="force"
             # self.group_A(others_units,target_pos,model=model)
-            self.group_A2(others_units,IFV_units)
+            self.group_A2(others2_units,qianpai_units)
         elif self.num>300:
             # self.group_A(others_units,target_pos,model="force")
-            self.group_A2(others_units,IFV_units)
+            self.group_A2(others2_units,qianpai_units)
 
         if jieju_flag2 == True:
             # self.group_A(IFV_units,target_pos,model="force")
             # self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
-            self.list_A(IFV_units,target_pos)
+            self.list_A(qianpai_units,target_pos)
         elif self.num>350:
-            self.list_A(IFV_units,target_pos)
+            self.list_A(qianpai_units,target_pos)
 
         # if arrived, then juhe.
         if self.num>800:

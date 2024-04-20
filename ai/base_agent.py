@@ -66,6 +66,7 @@ class BaseAgent(ABC):
         self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
         self.env_name = "cross_fire" # defualt. 
         self.flag_detect_update = True
+        self.calculated_can_shoot = {}
         
         # 以下这部分是从尚霖那里抄来的
         self.area = []
@@ -401,9 +402,10 @@ class BaseAgent(ABC):
         # 0106,it is said that detected enemy also included in my state.
         geshu_old = len(self.detected_state)
         # 这里其实有点问题，逻辑应该是探测到的敌方单位就再也不删除了，有状态更新就更新，没有就保持不变。
-        detected_state_new = copy.deepcopy(self.detected_state)
+        # detected_state_new = copy.deepcopy(self.detected_state)
+        detected_state_new = [] 
 
-        self.detected_state = []
+        
         units = state["operators"]
         
 
@@ -420,12 +422,17 @@ class BaseAgent(ABC):
         for unit in detected_state_single:
             units_ids_new.add(unit["obj_id"])
         
-        units_ids_commen = units_ids_old & units_ids_new 
+        units_ids_commen = units_ids_old | units_ids_new 
         units_ids_new_only = units_ids_new - units_ids_old
         units_ids_old_only = units_ids_old - units_ids_new
         
-        for unit_id in units_ids_new_only:
+        for unit_id in (units_ids_new_only | units_ids_commen):
             for unit in detected_state_single:
+                if unit["obj_id"] == unit_id:
+                    detected_state_new.append(unit)
+                    break
+        for unit_id in units_ids_old_only:
+            for unit in self.detected_state:
                 if unit["obj_id"] == unit_id:
                     detected_state_new.append(unit)
                     break
@@ -659,6 +666,32 @@ class BaseAgent(ABC):
         UAV_units = self.select_by_type(UAV_units,key="color",value=0)
         return UAV_units
     
+    def get_qianpai_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]
+        
+        # IFV without infantry in it and unmanned little car if exists.
+        IFV_units = self.get_IFV_units(units=units_input)
+        IFV_units_empty = []
+        for IFV_unit in IFV_units:
+            infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
+            if len(infantry_ID_list)==0:
+                # which means no infantry in it.
+                IFV_units_empty.append(IFV_unit)
+        
+        # the little cars
+        xiaoche_units = self.select_by_type(units_input,key="sub_type",value=4)
+        xiaoche_units = self.select_by_type(xiaoche_units,key="color",value=0) 
+
+        # then merge 
+        qianpai_units = xiaoche_units + IFV_units_empty
+
+        # if len(qianpai_units)==0:
+        #     qianpai_units = IFV_units
+        return qianpai_units
+
     def filter_arrived_units(self,units):
         # this is to find which unit arrived.
         arrived_units = self.select_by_type(units,key="cur_hex",value=self.target_pos)
@@ -1352,7 +1385,7 @@ class BaseAgent(ABC):
         #  using tongshi to modify the field further.
         # 如果已经算过了，就别重新算一遍这个了。
         flag_able_can_shoot = True
-        if flag_able_can_shoot:
+        if flag_able_can_shoot and self.num<1300:
             if pos_single in self.calculated_can_shoot:
                 flag_can_shoot = self.calculated_can_shoot[pos_single]
             else:
