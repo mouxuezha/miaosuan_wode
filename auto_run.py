@@ -11,6 +11,9 @@ from train_env.cross_fire_env import CrossFireEnv
 from train_env.scout_env import ScoutEnv
 from train_env.defend_env import DefendEnv
 
+import signal
+import time
+
 class auto_run():
     def __init__(self,env_name="crossfire") -> None:
 
@@ -123,6 +126,18 @@ class auto_run():
         zip_name = save_replay(self.begin, self.all_states)
         return self.all_states, zip_name
         # pass
+    
+    def handler(self, signum, frame):
+        print("auto_run: 抓到超时了，但是生活还要继续，继续继续...")
+        signal.pause()
+        # raise TimeoutError()
+    
+    def run_single_with_time_limit(self,time_limit = 114.514):
+        # 加了超时暂停的run_single,用于调试程序。
+        signal.signal(signal.SIGALRM, self.handler)
+        signal.alarm(time_limit)
+        self.all_states, zip_name = self.run_single()
+        return self.all_states, zip_name
 
 class record_result():
     def __init__(self):

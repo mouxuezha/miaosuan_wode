@@ -1444,6 +1444,18 @@ class BaseAgent(ABC):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
         # 直接做成模式可选择的就好了，要覆盖就覆盖，不要的话可以不覆盖。
         attacker_ID = self._set_compatible(attacker_ID)
+        try:
+            if "pos_steped_set" in self.abstract_state[attacker_ID]:
+                # 说明里面已经有pos_steped_set这个了
+                pos_steped_set = self.abstract_state[attacker_ID]["pos_steped_set"]
+                flag_pos_steped_set = True
+            else:
+                # 说明这个里面还没有pos_steped_set这
+                flag_pos_steped_set = False
+        except:
+            # 那就说明之前没有为这个ID定义过
+            flag_pos_steped_set = False
+
         if model=="normal":
             # 默认模式不覆盖，检测如果已经是move_and_attack状态了，就不做操作，
             # 如果是别的，就还是覆盖了。
@@ -1459,6 +1471,17 @@ class BaseAgent(ABC):
         elif model == "force":
             # 这个就是不管一切的强势覆盖，如果连着发就会覆盖
             self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514, "flag_evading":False}
+
+        # 作为抽象状态的一部分，“走过的点”应该是全局的，至少在某个命令的范畴内是全局的。
+        if flag_pos_steped_set==False:
+            # 如果没有，那就加一个.
+            pos_steped_set = set()
+            self.abstract_state[attacker_ID]["pos_steped_set"] = pos_steped_set
+        else:
+            # 如果有了，那就别乱改，加回去.
+            self.abstract_state[attacker_ID]["pos_steped_set"] = pos_steped_set
+            pass
+        
 
     def set_hidden_and_alert(self, attacker_ID):
         # 这个就是原地坐下，调成隐蔽状态。
@@ -1697,20 +1720,6 @@ class BaseAgent(ABC):
                 neighbor_field_array[i,1] = neighbor_field_single
                 neighbor_field_list.append(neighbor_field_single)
 
-                # if neighbor_field_single<50:
-                #     # 2024年4月17日19:20:19 这个逻辑有问题，用阈值可能出现全场，想办法换个排序啥的恐怕会好点。比如从威胁最小的三个点里找
-                #     # 选出一些比较安全的点。如果没有比较安全的点就只能用全部点了。
-                #     neighbor_pos_list_selected.append(neighbor_pos_single)
-                #     neighbor_field_list_selected.append(neighbor_field_single)
-
-            # if len(neighbor_pos_list_selected)>2:
-            #     # 说明周围存在相对安全一些的区域
-            #     pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected,vector_xy)
-            #     pass
-            # else:
-            #     # 说明周围全是高威胁的区域了，那还不如拼一枪。
-            #     pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-            #     pass    
                     
             # 搞个排序，会相对好一点
             neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
@@ -1734,7 +1743,16 @@ class BaseAgent(ABC):
             else:
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:4], vector_xy)
             # 选出来之后就过去呗。
+
+            # 增加一个机制，用来体现不走回头路，防止“火力封锁”问题
+            # 对每个抽象状态都维护一个过了的set
+            # 先检测是不是去过的点，如果是，就重新找。
+            if pos_next in self.abstract_state[attacker_ID]["pos_steped_set"]:
+                # 重新找的时候就不管了，直接所有点里面找一个方向最合适的
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+
             self._move_action(attacker_ID, pos_next)
+            self.abstract_state[attacker_ID]["pos_steped_set"].add(pos_next)
         
          
         if jvli > 0:
