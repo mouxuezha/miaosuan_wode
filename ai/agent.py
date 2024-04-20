@@ -436,8 +436,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     try:
                         knight_abstract_state = self.abstract_state[knight_ID]["abstract_state"]
                     except:
-                        knight_abstract_state = "none"
-                        self.set_none(knight_ID)
+                        # knight_abstract_state = "none"
+                        # self.set_none(knight_ID)
+                        self.set_move_and_attack(knight_ID,self.target_pos,model="force")
  
                     if (knight_abstract_state == "move_and_attack" and "next" in self.abstract_state[knight_ID]) or knight_abstract_state == "juhe" or (knight_ID==king_ID):
                         # this knight has his lord.
