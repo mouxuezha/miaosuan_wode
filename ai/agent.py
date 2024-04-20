@@ -223,6 +223,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             index_min = enemy_infantry_jvli_danger.index(jvli_min)
             enemy_pos= enemy_infantry_units_danger[index_min]["cur_hex"]
             enemy_xy = self._hex_to_xy(enemy_pos)
+            
+
             # # method1: 先取个中间点出来
             def method1(enemy_infantry_units_danger):
                 pos_ave_enemy = self.get_pos_average(enemy_infantry_units_danger)
@@ -247,12 +249,19 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
                 # 这个改一下，向量运算的起点还是改成最近的敌方单位的位置恐怕好一些。
                 xy_center = enemy_xy
+                xy_center_distance = np.linalg.norm(vector_xy_enemy)
+                # 绕路的距离应该和当前到目标点的距离有关系，太近了就别绕太远了。这里的距离应该是从xy来选
+                if xy_center_distance<15:
+                    # 那就是已经快到了，那就得限制一下绕路的距离
+                    len_raolu = round(xy_center_distance)
+                else:
+                    len_raolu = 18 
 
                 try:
-                    xy_candidate = xy_center + 18*n_xy_list[0]
+                    xy_candidate = xy_center + len_raolu*n_xy_list[0]
                     pos_candidate = self._xy_to_hex(xy_candidate)
                 except:
-                    xy_candidate = xy_center + 18*n_xy_list[1]
+                    xy_candidate = xy_center + len_raolu*n_xy_list[1]
                     pos_candidate = self._xy_to_hex(xy_candidate) 
 
                 return pos_candidate
@@ -266,8 +275,17 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 if np.dot(n1_xy,vector_xy_enemy)>0 or True: #disabled for debug
                     # which means the direction is right.
                     # n_xy_list = [n1_xy, n2_xy] 
+
+                    # 绕路的距离应该和当前到目标点的距离有关系，太近了就别绕太远了。这里的距离应该是从xy来选
+                    xy_center_distance = np.linalg.norm(vector_xy_enemy)
+                    if xy_center_distance<15:
+                        # 那就是已经快到了，那就得限制一下绕路的距离
+                        len_raolu = round(xy_center_distance)
+                    else:
+                        len_raolu = 18 
+
                     try:
-                        xy_candidate = enemy_xy + 18*n1_xy
+                        xy_candidate = enemy_xy + len_raolu*n1_xy
                         pos_candidate = self._xy_to_hex(xy_candidate)
                     except:
                         # if it doesn't work, then use method1
@@ -918,23 +936,21 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         
         # F2A.
         # if jieju_flag == True and self.num<800:
+        qianpai_units = self.get_qianpai_units()
+        others2_units = [unit for unit in units if (unit not in qianpai_units)]
         if jieju_flag == True and jieju_flag2==True:
-            if self.num < 200:
-                model="normal"
-            else:
-                model="force"
             # self.group_A(others_units,target_pos,model=model)
-            self.group_A2(others_units,IFV_units)
+            self.group_A2(others2_units,qianpai_units)
         elif self.num>300:
             # self.group_A(others_units,target_pos,model="force")
-            self.group_A2(others_units,IFV_units)
+            self.group_A2(others2_units,qianpai_units)
 
         if jieju_flag2 == True:
             # self.group_A(IFV_units,target_pos,model="force")
             # self.list_A(IFV_units,target_pos,target_pos_list = [2024,2024,self.target_pos] )
-            self.list_A(IFV_units,target_pos)
+            self.list_A(qianpai_units,target_pos)
         elif self.num>350:
-            self.list_A(IFV_units,target_pos)
+            self.list_A(qianpai_units,target_pos)
 
         # if arrived, then juhe.
         if self.num>800:

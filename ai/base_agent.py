@@ -66,6 +66,7 @@ class BaseAgent(ABC):
         self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
         self.env_name = "cross_fire" # defualt. 
         self.flag_detect_update = True
+        self.calculated_can_shoot = {}
         
         # 以下这部分是从尚霖那里抄来的
         self.area = []
@@ -401,43 +402,41 @@ class BaseAgent(ABC):
         # 0106,it is said that detected enemy also included in my state.
         geshu_old = len(self.detected_state)
         # 这里其实有点问题，逻辑应该是探测到的敌方单位就再也不删除了，有状态更新就更新，没有就保持不变。
-        detected_state_new = copy.deepcopy(self.detected_state)
+        # detected_state_new = copy.deepcopy(self.detected_state)
+        detected_state_new = [] 
 
-        self.detected_state = []
+        
         units = state["operators"]
         
-        # for unit in units:
-        #     detected_IDs = unit["see_enemy_bop_ids"]
-        #     for detected_ID in detected_IDs:
-        #         detected_state_single = self.select_by_type(units,key="obj_id", value=detected_ID)
-        #         self.detected_state = self.detected_state + detected_state_single
 
         self.status_old=copy.deepcopy(self.status)
 
         color_enemy = 1 - self.color
         detected_state_single = self.select_by_type(units,key="color", value=color_enemy)
+         
+        units_ids_old = set() 
+        units_ids_new = set()
 
-        
-        
-        # 去重和更新。
-        # for unit_old in self.detected_state:
+        for unit_old in self.detected_state:
+            units_ids_old.add(unit_old["obj_id"])
         for unit in detected_state_single:
-            flag_updated = False
-            # for unit in detected_state_single:
-            for unit_old in self.detected_state:
-                if unit_old["obj_id"] == unit["obj_id"]:
-                    # 说明这个是已经探索过的了，那就用新的
+            units_ids_new.add(unit["obj_id"])
+        
+        units_ids_commen = units_ids_old | units_ids_new 
+        units_ids_new_only = units_ids_new - units_ids_old
+        units_ids_old_only = units_ids_old - units_ids_new
+        
+        for unit_id in (units_ids_new_only | units_ids_commen):
+            for unit in detected_state_single:
+                if unit["obj_id"] == unit_id:
                     detected_state_new.append(unit)
-                    flag_updated == True
                     break
-            if flag_updated == False:
-                # 说明是new detected.
-                # 这个会高估威胁，打爆了的敌人会继续存在于态势中。
-                # 但是crossfire里面真能打爆敌人的场景也不是很多，所以也就罢了。
-                detected_state_new.append(unit)
-            
-
-                                
+        for unit_id in units_ids_old_only:
+            for unit in self.detected_state:
+                if unit["obj_id"] == unit_id:
+                    detected_state_new.append(unit)
+                    break
+                     
         self.detected_state = detected_state_new
         # 至此可以认为，过往所有探测到的敌人都保持在这里面了。
         geshu_new = len(self.detected_state)
@@ -667,6 +666,32 @@ class BaseAgent(ABC):
         UAV_units = self.select_by_type(UAV_units,key="color",value=0)
         return UAV_units
     
+    def get_qianpai_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]
+        
+        # IFV without infantry in it and unmanned little car if exists.
+        IFV_units = self.get_IFV_units(units=units_input)
+        IFV_units_empty = []
+        for IFV_unit in IFV_units:
+            infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
+            if len(infantry_ID_list)==0:
+                # which means no infantry in it.
+                IFV_units_empty.append(IFV_unit)
+        
+        # the little cars
+        xiaoche_units = self.select_by_type(units_input,key="sub_type",value=4)
+        xiaoche_units = self.select_by_type(xiaoche_units,key="color",value=0) 
+
+        # then merge 
+        qianpai_units = xiaoche_units + IFV_units_empty
+
+        # if len(qianpai_units)==0:
+        #     qianpai_units = IFV_units
+        return qianpai_units
+
     def filter_arrived_units(self,units):
         # this is to find which unit arrived.
         arrived_units = self.select_by_type(units,key="cur_hex",value=self.target_pos)
@@ -1359,27 +1384,29 @@ class BaseAgent(ABC):
 
         #  using tongshi to modify the field further.
         # 如果已经算过了，就别重新算一遍这个了。
-        if pos_single in self.calculated_can_shoot:
-            flag_can_shoot = self.calculated_can_shoot[pos_single]
-        else:
-            # 要是没算过那再算一下。
-            flag_can_shoot = 0 
-            for unit in self.detected_state:
-                # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
-                enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
-                enemy_type = unit["sub_type"]
-                my_type = 2 # 直接用车辆了，
-                # 调地图，看是不是会被打到。
-                flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
-                if flag_can_shoot>0:
-                    break
-            # 更新到存的那个里面。原则上已经可以少算
-            self.calculated_can_shoot[pos_single] = flag_can_shoot
+        flag_able_can_shoot = True
+        if flag_able_can_shoot and self.num<1300:
+            if pos_single in self.calculated_can_shoot:
+                flag_can_shoot = self.calculated_can_shoot[pos_single]
+            else:
+                # 要是没算过那再算一下。
+                flag_can_shoot = 0 
+                for unit in self.detected_state:
+                    # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
+                    enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
+                    enemy_type = unit["sub_type"]
+                    my_type = 2 # 直接用车辆了，
+                    # 调地图，看是不是会被打到。
+                    flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+                    if flag_can_shoot>0:
+                        break
+                # 更新到存的那个里面。原则上已经可以少算
+                self.calculated_can_shoot[pos_single] = flag_can_shoot
+            if flag_can_shoot>0:
+                # field_value = field_value + a1*100 / (a2 + jvli)
+                # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
+                field_value = field_value + a1 / (a2)        
 
-        if flag_can_shoot>0:
-            # field_value = field_value + a1*100 / (a2 + jvli)
-            # 这里就不要距离修正了，会被打的地方就是威胁很大，也没有什么问题。
-            field_value = field_value + a1 / (a2)            
         return field_value
 
     def update_detectinfo(self, detectinfo):
@@ -1450,6 +1477,18 @@ class BaseAgent(ABC):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
         # 直接做成模式可选择的就好了，要覆盖就覆盖，不要的话可以不覆盖。
         attacker_ID = self._set_compatible(attacker_ID)
+        try:
+            if "pos_steped_set" in self.abstract_state[attacker_ID]:
+                # 说明里面已经有pos_steped_set这个了
+                pos_steped_set = self.abstract_state[attacker_ID]["pos_steped_set"]
+                flag_pos_steped_set = True
+            else:
+                # 说明这个里面还没有pos_steped_set这
+                flag_pos_steped_set = False
+        except:
+            # 那就说明之前没有为这个ID定义过
+            flag_pos_steped_set = False
+
         if model=="normal":
             # 默认模式不覆盖，检测如果已经是move_and_attack状态了，就不做操作，
             # 如果是别的，就还是覆盖了。
@@ -1465,6 +1504,17 @@ class BaseAgent(ABC):
         elif model == "force":
             # 这个就是不管一切的强势覆盖，如果连着发就会覆盖
             self.abstract_state[attacker_ID] = {"abstract_state": "move_and_attack", "target_pos": target_pos,"flag_moving": False, "jvli": 114514, "flag_evading":False}
+
+        # 作为抽象状态的一部分，“走过的点”应该是全局的，至少在某个命令的范畴内是全局的。
+        if flag_pos_steped_set==False:
+            # 如果没有，那就加一个.
+            pos_steped_set = set()
+            self.abstract_state[attacker_ID]["pos_steped_set"] = pos_steped_set
+        else:
+            # 如果有了，那就别乱改，加回去.
+            self.abstract_state[attacker_ID]["pos_steped_set"] = pos_steped_set
+            pass
+        
 
     def set_hidden_and_alert(self, attacker_ID):
         # 这个就是原地坐下，调成隐蔽状态。
@@ -1703,43 +1753,39 @@ class BaseAgent(ABC):
                 neighbor_field_array[i,1] = neighbor_field_single
                 neighbor_field_list.append(neighbor_field_single)
 
-                # if neighbor_field_single<50:
-                #     # 2024年4月17日19:20:19 这个逻辑有问题，用阈值可能出现全场，想办法换个排序啥的恐怕会好点。比如从威胁最小的三个点里找
-                #     # 选出一些比较安全的点。如果没有比较安全的点就只能用全部点了。
-                #     neighbor_pos_list_selected.append(neighbor_pos_single)
-                #     neighbor_field_list_selected.append(neighbor_field_single)
-
-            # if len(neighbor_pos_list_selected)>2:
-            #     # 说明周围存在相对安全一些的区域
-            #     pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected,vector_xy)
-            #     pass
-            # else:
-            #     # 说明周围全是高威胁的区域了，那还不如拼一枪。
-            #     pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-            #     pass    
                     
             # 搞个排序，会相对好一点
             neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
             neighbor_pos_list_selected = neighbor_field_array_sorted[:,0]
+            neighbor_field_list_selected = neighbor_field_array_sorted[:,1]
             # change to int, or there would be type error in map.py
             neighbor_pos_list_selected = neighbor_pos_list_selected.astype(int)
             # using np.int64 would cause trouble.
             neighbor_pos_list_selected = neighbor_pos_list_selected.tolist()
             # 然后根据威胁情况看后面往哪里去。
             a1 =10 
-            if neighbor_pos_list_selected[5] ==0:
+            if neighbor_field_list_selected[5] ==0:
                 # which means all are zero
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
-            elif neighbor_pos_list_selected[5]<a1 :
+            elif neighbor_field_list_selected[5]<a1 :
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:6], vector_xy)
-            elif neighbor_pos_list_selected[3]<a1 :
+            elif neighbor_field_list_selected[3]<a1 :
                 pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
-            elif neighbor_pos_list_selected[0]>a1:
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+            elif neighbor_field_list_selected[0]>a1:
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list[0:5], vector_xy)
             else:
-                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:3], vector_xy)
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list_selected[0:4], vector_xy)
             # 选出来之后就过去呗。
+
+            # 增加一个机制，用来体现不走回头路，防止“火力封锁”问题
+            # 对每个抽象状态都维护一个过了的set
+            # 先检测是不是去过的点，如果是，就重新找。
+            if pos_next in self.abstract_state[attacker_ID]["pos_steped_set"]:
+                # 重新找的时候就不管了，直接所有点里面找一个方向最合适的
+                pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+
             self._move_action(attacker_ID, pos_next)
+            self.abstract_state[attacker_ID]["pos_steped_set"].add(pos_next)
         
          
         if jvli > 0:

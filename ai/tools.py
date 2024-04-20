@@ -110,7 +110,8 @@ def xy_to_hex(xy):
         if abs(xy[1]) <1:
             xy[1] = 0 
         if (xy[0]*xy[1])<0:
-            raise Exception("invalid xy in xy_to_hex")
+            # raise Exception("invalid xy in xy_to_hex")
+            hex = -1 
         hex = 100*round(xy[1]) + xy[0]
         hex = round(hex)
         return hex

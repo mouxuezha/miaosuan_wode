@@ -10,6 +10,12 @@ sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
 from train_env.cross_fire_env import CrossFireEnv
 from train_env.scout_env import ScoutEnv
 from train_env.defend_env import DefendEnv
+from memory_profiler import profile
+from threading import Thread
+import copy
+
+import signal
+import time
 
 class auto_run():
     def __init__(self,env_name="crossfire") -> None:
@@ -80,6 +86,7 @@ class auto_run():
         self.config_str = ""
         self.all_games = []
     
+    @profile(stream=open("logs/replays/memory_profiler.log", "w+"))
     def run_single(self):
         # varialbe to build replay
         self.begin = time.time()
@@ -123,7 +130,30 @@ class auto_run():
         zip_name = save_replay(self.begin, self.all_states)
         return self.all_states, zip_name
         # pass
+    
+    def handler(self, signum, frame):
+        print("auto_run: 抓到超时了,press Ctrl+C to continue")
+        signal.pause()
+        # break point here
+        print("但是生活还要继续，继续继续...")
+        pass 
+        # raise TimeoutError()
+    
+    def handler2(self, signum, frame):
+        print("auto_run: 抓到超时了,continue")
+        signal.alarm(0)
+        pass 
 
+    def run_single_with_time_limit(self,time_limit = 114.514):
+        # 加了超时暂停的run_single,用于调试程序。
+        signal.signal(signal.SIGALRM, self.handler)
+        signal.alarm(time_limit)
+        signal.signal(signal.SIGINT, self.handler2)
+        self.all_states, zip_name = self.run_single()
+        return self.all_states, zip_name
+
+
+    
 class record_result():
     def __init__(self):
         self.reward_ave = 0 
@@ -149,7 +179,15 @@ class record_result():
         print("time_comsumption:",time_consumption)
         self.time_list.append(time_consumption)
         self.begin = this_moment
-        
+
+    def get_result_multi(self,result_list,result_name_list):
+        # get result from one round
+        geshu = len(result_list)
+        for i in range(geshu):
+            all_states_single = result_list[i]
+            zip_name_single = result_name_list[i]
+            self.get_result_single(all_states_single,zip_name_single)
+
     def get_result_all(self,all_games):
         # get result from one round
         geshu = len(all_games)
@@ -184,6 +222,40 @@ class record_result():
         file_txt.write("\n\n\n")
         file_txt.close()
         pass
+    
+    def run_multi(self,num_thread,env_name="crossfire"):
+        # init a void list for results
+        self.result_list = [] 
+        self.result_name_list = [] 
+        for i in range(num_thread):
+            self.result_list.append([])
+            self.result_name_list.append([])
+
+        # get some threads
+        thread_list = []
+        for i in range(num_thread):
+            thread_single = Thread(target=self.run_single,args=(env_name, i))
+            thread_list.append(thread_single)
+        
+        # then run, 
+        for thread_single in thread_list:
+            thread_single.start()
+        
+        # then wait for all threads to finish.
+        for thread_single in thread_list:
+            thread_single.join()
+        
+        # get result
+        self.get_result_multi(self.result_list,self.result_name_list)
+            
+        return self.result_list,self.result_name_list
+
+    def run_single(self,env_name, index):
+        runner_in = auto_run(env_name=env_name)
+        all_states_single,zip_name = runner_in.run_single()
+        self.result_list[index] = copy.deepcopy(all_states_single)
+        self.result_name_list[index] = copy.deepcopy(zip_name)
+        return
 
 # copy from demo code
 def save_replay(replay_name, data):
@@ -197,12 +269,20 @@ def save_replay(replay_name, data):
 
 if __name__ == "__main__":
     jieguo = record_result()
-    jieguo.record_config("debug defend, merge")
-    for i in range(10):
-        shishi = auto_run(env_name="defend")
-        # shishi = auto_run(env_name="crossfire")
+    jieguo.record_config("debug crossfire, can shoot off when self.num>1300, and uing qianpai")
+    for i in range(1):
+        print("\n\n"+"round "+str(i)+"\n")
+
+        # # single thread model
+        # shishi = auto_run(env_name="defend")
+        shishi = auto_run(env_name="crossfire")
         # shishi = auto_run(env_name="scout")
-        all_states_single,zip_name = shishi.run_single()
+        # all_states_single,zip_name = shishi.run_single()
+        all_states_single,zip_name = shishi.run_single_with_time_limit(10)
         jieguo.get_result_single(all_states_single,zip_name)
+        
+        # multi thread model
+        # jieguo.run_multi(2, "crossfire")
+
     jieguo.get_result_all(jieguo.all_games)
 
