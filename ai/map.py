@@ -1,8 +1,10 @@
+import os
 import heapq
 import random
 import numpy as np
+
 from .const import BopType, CondType
-import os
+from .tools import time_decorator
 
 ob_range = [
     [10, 25, 1],
@@ -275,7 +277,7 @@ class Map:
         return set(ob_area)
 
     def get_ob_area2(self, center: int, unit_type: int, target_type: int,
-        passive=False, exclude_area=None):
+        passive=False, constrain_area=None):
         """
         调用算好的ob矩阵
         :return: set
@@ -296,9 +298,10 @@ class Map:
             ob_area = np.where(self.ob[mode][:, idx])[0]
         else:
             ob_area = np.where(self.ob[mode][idx, :])[0]
+        ob_area = np.append(ob_area, center)
         ob_area = set(ob_area)
-        if exclude_area:
-            ob_area -= exclude_area
+        if constrain_area:
+            ob_area &= constrain_area
         return ob_area
 
     def get_shoot_area(self, center: int, unit_type: int, exclude_area=None):
