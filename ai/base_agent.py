@@ -66,6 +66,7 @@ class BaseAgent(ABC):
         self.threaten_field = {} # 垃圾一点儿了，直接整一个字典类型来存势场了。{pos(int) : field_value(double)}
         self.env_name = "cross_fire" # defualt. 
         self.flag_detect_update = True
+        self.calculated_can_shoot = {}
         
         # 以下这部分是从尚霖那里抄来的
         self.area = []
