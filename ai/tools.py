@@ -1,4 +1,4 @@
-import numpy as np 
+import numpy as np
 
 def select_by_type(units,key="obj_id",value=0):
     # a common tool, for selecting units according to different keys.
