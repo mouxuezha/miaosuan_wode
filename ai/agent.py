@@ -33,7 +33,20 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.tank_stage = {}
         self.tank_defend_target = {}
         self.prepare_to_occupy  = {}
-
+        #@szh0404 添加记录fort 状态的
+        self.fort_assignments = {}
+        #@szh0404 添加记录算子目的地 说法是用movepath 就不用 
+        self.ops_destination = {}
+        self.troop_stage = {}
+        self.troop_defend_target = {}
+        self.chariot_stage = {}
+        self.chariot_defend_target = {}
+        self.tank_stage = {}
+        self.tank_defend_target = {}
+        self.prepare_to_occupy  = {}
+        self.enemy_info = {}  #用来记敌方位置信息  需要记录对应的时刻 key = obj_id
+        self.filtered_enemyinfo = {}
+        self.max_unseen_time = 200
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
         # self.get_scenario_info(setup_info["scenario"])
@@ -302,7 +315,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 pos_candidate = method2(enemy_infantry_units)  
             else:
                 raise Exception("invalid list_A method, G!")
-            pos_candidate = method2(enemy_infantry_units)            
+            # pos_candidate = method2(enemy_infantry_units)            
         else:
             pos_candidate = target_pos
         return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
@@ -395,7 +408,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # if there is no more time, then just chong.
         time_assume = round(jvli * 20 * 1.1)
-        if time_assume < (self.end_time - self.num):
+        # time_assume = -114514
+        if time_assume > (self.end_time - self.num):
             # then just chong, without using naozi
             for unit in units:
                 self.set_move_and_attack(unit,self.target_pos,model="force")
@@ -1003,7 +1017,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     ###################### defend  ############################    
     @time_decorator
     def step_defend(self):
-        self.act = []
         # # unfinished yet.
         
         # # 先把场景目标点在哪读出来
@@ -1064,7 +1077,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 self.ops_destination[ op["obj_id"]]  = ""
         self.reset_occupy_state()                         # 重新看有没有空点
         self.update_prepare_to_occupy()
-        
+        self.update_enemyinfo()
+        self.update_filter_enemyinfo()
         if self.num <= 900:
             for troop in self.get_defend_infantry_units():
                 if self.num <=2:
@@ -1074,15 +1088,19 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     )
                     self.ops_destination[ troop["cur_hex"] ]  =  closest_city["coord"]
                 self.defend_BT_Troop(troop["obj_id"])
+            if self.num >= 90 and len(self.filtered_enemyinfo) > 0: # 先去占点
+                if self.defend_shrink_by_power():
+                    if self.defend_let_our_power_shrink_to_city():
+                        return 
+                if self.defend_attack_by_power():
+                    if self.defend_let_our_power_attack_to_city():
+                        return 
             for chariot in self.get_defend_armorcar_units():
                 self.defend_BT_Chariot(chariot["obj_id"])
             for tank in self.get_defend_tank_units():
                 self.defend_BT_Tank(tank["obj_id"])
         else:
             self.defend_goto_cities()
-        
-        print("+++++++++++++++ act +++++++++++++++ : ",len(self.act))
-
 
     #@szh 0404 所有算子执行最终夺控
     def defend_goto_cities(self):
@@ -1100,8 +1118,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 self.__tank_handle_open_fire(u["obj_id"])
         
         return 
-
-
 
     #@szh 0404 添加转化为二级冲锋的
     def gen_change_state(self, obj_id, chongfeng):
@@ -1187,9 +1203,38 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         return self.select_by_type(self.status["operators"],key="sub_type",value=11)
     def get_hiddingbase_units(self)->List[Dict]:
         return self.select_by_type(self.status["operators"],key="sub_type",value=20)
-    #@szh 0328 写一个夺控的策略
-
-
+    
+    #@szh @0417 写一个更新 enemy info 的函数
+    def update_enemyinfo(self):
+        maxsize = 3
+        ene_ops = self.defend_enemy_info()
+        for eop in ene_ops:
+            if eop["obj_id"] not in self.enemy_info.keys():
+                self.enemy_info[ eop["obj_id"] ] = RecurrentQueue(maxsize)
+            if "time_step" not in eop.keys():
+                eop["time_step"] = self.num
+            self.enemy_info[ eop["obj_id"] ]._push_back(eop)
+        return
+    #@szh @0417 写一个过滤 enemy info 的函数  太长时间没看到的 
+    def update_filter_enemyinfo(self):
+        max_unseen_time  = self.max_unseen_time
+        self.filtered_enemyinfo = self.enemy_info
+        member_to_del  = []
+        for obid , v in self.enemy_info.items():
+            info2_index = (v.rear - 1  +  v.maxsize ) % v.maxsize
+            top_record = v._get_item_by_index(info2_index)
+            if self.num - top_record["time_step"] > max_unseen_time:
+                member_to_del.append(obid)
+        for del_obid in member_to_del:
+            self.filtered_enemyinfo[del_obid]
+        return 
+    
+            
+        
+        
+        
+                
+                
     #@szh 0329 补充获得敌方detect 函数
     def defend_enemy_hex(self)->List[int]:
         return [op["cur_hex"] for op in self.status["operators"] if op["color"] != self.color]
@@ -1246,7 +1291,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
          后续扩展哪些类型的敌方算子要加入进来  例如 炮弹等有明确目标的就不必考虑 
          在defend 场景下只需要考虑 坦克 步兵  战车
         """
-        detected_units_state = self.get_detected_state(observation) # 返回的是 list of units
+        detected_units_state = self.get_detected_state(self.observation) # 返回的是 list of units
         # detected_units_state : 一个包括对方所有算子的list  基于此 选择筛选一定范围的敌方算子
         detect_unit_in_scope = []
         for detect_unit in detected_units_state:
@@ -1328,7 +1373,18 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             return key_point_candidate
 
 
-    
+    def __handle_open_fire(self, attacker_ID):
+        # 有啥能打的就都打一遍呗。这个还是共用CD的，不用考虑遍历。共用CD挺傻逼的讲道理。
+
+        # 如果在机动，就停下来。
+        flag_is_stop = self.is_stop(attacker_ID)
+        if not(flag_is_stop):
+            # 没有is stop就是在机动呗，那就停下来。
+            self._stop_action(attacker_ID)
+
+        # 这个写法相当于每一步都检测一次，能打就打
+        # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
+        self._fire_action(attacker_ID)
     
     #@szh0404  将点按照特定要求排序  如高程 地形等 
     def defend_sort_point_by_type(self,
@@ -1372,8 +1428,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     self.gen_change_state(obj_id, 2)
                     self._move_action( obj_id,  self.ops_destination[obj_id] )
                     return
-                # if self.color == closest_city["flag"] and bop_troop["cur_hex"] == closest_city["coord"] and self.troop_stage[obj_id] == "":
-                #     self.gen_change_state(obj_id, 0)
+            #     # if self.color == closest_city["flag"] and bop_troop["cur_hex"] == closest_city["coord"] and self.troop_stage[obj_id] == "":
+            #     #     self.gen_change_state(obj_id, 0)
                           
             if bop_troop["forking"]:
                 return 
@@ -1496,6 +1552,178 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.act.append(action_gen)
         self._action_check_and_append(action_gen)
         
+    #@szh 0417 写一个计算当前敌我双方力量配比的
+    def defend_calculate_power(self, color:int, candidates:List[Dict])->int :
+        power_ = 0
+        if color == self.color:
+            #ops = self.get_defend_armorcar_units() + self.get_defend_infantry_units() + self.get_defend_tank_units()
+            ops = candidates
+            for op in ops:
+                if op["sub_type"] ==  BopSubType.Infantry:
+                    power_ += FriendValue.Infantry*op["blood"]
+                elif op["sub_type"] == BopSubType.Tank:
+                    power_ += FriendValue.Tank*op["blood"]
+                elif op["sub_type"] == BopSubType.Chariot:
+                    power_ += FriendValue.Chariot*op["blood"]   
+        else:
+            #ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+            ops = candidates
+            for op in ops:
+                if op["sub_type"] ==  BopSubType.Infantry:
+                    power_ += EnemyValue.Infantry**op["blood"]
+                elif op["sub_type"] == BopSubType.Tank:
+                    power_ += EnemyValue.Tank**op["blood"]
+                elif op["sub_type"] == BopSubType.Chariot:
+                    power_ += EnemyValue.Chariot**op["blood"]
+        return power_
+
+    #@szh 0417 写一个收缩战略  观察到敌我力量悬殊 收缩到一个点
+    @time_decorator
+    def defend_shrink_by_power(self):
+        our_ops = self.get_defend_tank_units() + self.get_defend_infantry_units()+ self.get_defend_armorcar_units()
+        ene_ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        our_power = self.defend_calculate_power(self.color, our_ops)
+        enemy_power = self.defend_calculate_power(~self.color,ene_ops)
+        if enemy_power >= int(2 * our_power):
+            return True
+        return False
+    
+    #@szh 0417 写一个进攻战略 如果我方力量较敌方更强  直接进点占点
+    @time_decorator
+    def defend_attack_by_power(self):
+        our_ops = self.get_defend_tank_units() + self.get_defend_infantry_units()+ self.get_defend_armorcar_units()
+        ene_ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        our_power = self.defend_calculate_power(self.color, our_ops)
+        enemy_power = self.defend_calculate_power(~self.color, ene_ops)
+        if enemy_power < int(0.5* our_power):
+            return True
+        return False
+    
+    #@szh 0417 写一个收缩战略  观察到敌我力量悬殊 全线收缩
+    def defend_let_our_power_shrink_to_city(self)->bool:  # True  就收缩  False 就继续原来的策略
+        """
+            有步兵班就先去步兵班那
+            没有就去夺控点
+            后面需要确定一下是去夺控点好还是直接去步兵班的位置好
+        """
+        our_tanks = self.get_defend_tank_units()
+        our_infan  = self.get_defend_infantry_units()
+        our_chariot = self.get_defend_armorcar_units()
+        flag_has_infantry_to_occ = False
+        
+        if len(our_infan) > 0:
+            # 直接跟步兵班那里
+            # 选距离最近的步兵班
+            for tank in our_tanks:
+                self.__tank_handle_open_fire(tank["obj_id"])
+                cloest_infan = min(
+                    our_infan,
+                    key = lambda infan : self.distance( infan["cur_hex"], tank["cur_hex"])
+                )
+                self.ops_destination[ tank["obj_id"] ] = cloest_infan["cur_hex"]
+                self._move_action(tank["obj_id"] , self.ops_destination[ tank["obj_id"] ] )
+            for chariot in our_chariot:
+                cloest_infan = min(
+                    our_infan,
+                    key = lambda infan : self.distance( infan["cur_hex"], chariot["cur_hex"])
+                )
+                self.ops_destination[ chariot["obj_id"] ] = cloest_infan["cur_hex"]
+                self._move_action(chariot["obj_id"], self.ops_destination[ chariot["obj_id"]])
+                if chariot["cur_hex"] == cloest_infan["cur_hex"]:
+                    self.__handle_open_fire(chariot["obj_id"])
+            flag_has_infantry_to_occ = True
+                
+        return flag_has_infantry_to_occ
+                
+    
+    #@szh 0417 写一个进攻战略  板载!!!
+    def defend_let_our_power_attack_to_city(self)->bool:
+        """
+        有不是我方夺控的  坦克: 夺控点六格内没人-- 直接冲夺控点  冲完夺控点去支援  六格内有人在夺控点周围六个内晃悠
+        战车: 
+        
+        """
+        our_tanks = self.get_defend_tank_units()
+        our_infan  = self.get_defend_infantry_units()
+        our_chariot = self.get_defend_armorcar_units()
+        scities = [c for c in self.observation["cities"]]
+        ene_cities = [c for c in scities if c["flag"] != self.color]
+       
+        if len(ene_cities) == 0:
+            return False  
+        # 估计敌人方位
+        # enepos = self.filtered_enemyinfo
+        # enemy_closest_city = None  # 找敌人离的最近的城市 六格随机游走
+        ene_cities_map = {c["coord"] : 1000 for c in ene_cities}
+        for ec in ene_cities:
+            total_dis = 0
+            for enid , eninfo_que in self.filtered_enemyinfo.items():
+                last_index = (eninfo_que.rear - 1  +  eninfo_que.maxsize ) % eninfo_que.maxsize
+                recent_record = eninfo_que._get_item_by_index(last_index)
+                total_dis += self.distance(ec["coord"], recent_record["cur_hex"])
+            ene_cities_map[ ec["coord"] ] = total_dis
+        min_dis = 10000
+        min_ene_city_pos = None
+        for k, v in ene_cities_map.items():
+            if v < min_dis:
+                min_ene_city_pos = k 
+                min_dis = v
+        if min_ene_city_pos is not None :
+            for tank in our_tanks:
+                self.__tank_handle_open_fire(tank["obj_id"])
+                ene_city_candidates = self.map.get_neighbors(min_ene_city_pos) + [min_ene_city_pos]
+                tar_pos = random.choice(ene_city_candidates)
+                # 找敌人离的最近的城市 六格随机游走
+                if tank["speed"] == 0 or self.ops_destination[ tank["obj_id"] ] == "":
+                    self.ops_destination[ tank["obj_id"] ] = tar_pos
+                    self._move_action(tank["obj_id"] , self.ops_destination[ tank["obj_id"] ] )
+        
+            for chariot in our_chariot:
+                # 找能尽可能覆盖这个点的位置
+                nbs = self.map.get_neighbors(chariot["cur_hex"]) + [chariot["cur_hex"]]
+                tars = self.map.get_neighbors(min_ene_city_pos) + [min_ene_city_pos]
+                max_can_see = 0
+                best_point_can_see = None
+                for nb in nbs:
+                    total_can_see = 0
+                    for tp in tars:
+                        if self.map.can_see(nb, tp, 0):
+                            total_can_see += 1
+                    if total_can_see > max_can_see:
+                        max_can_see = total_can_see
+                        best_point_can_see = nb
+                if best_point_can_see is not None:
+                    if chariot["speed"] == 0 or self.ops_destination[ chariot["obj_id"] ] == "":
+                        self.ops_destination[ chariot["obj_id"] ] = best_point_can_see
+                        self._move_action(chariot["obj_id"] , self.ops_destination[ chariot["obj_id"] ] )
+                    if chariot["cur_hex"] == best_point_can_see:
+                        self.__handle_open_fire(chariot["obj_id"])
+            return True
+
+                    
+                # cloest_infan = min(
+                #     our_infan,
+                #     key = lambda infan : self.distance( infan["cur_hex"], chariot["cur_hex"])
+                # )
+                # self.ops_destination[ chariot["obj_id"] ] = cloest_infan["cur_hex"]
+                # self._move_action(chariot["cur_hex"], self.ops_destination[ chariot["obj_id"]])
+                # if chariot["cur_hex"] == cloest_infan["cur_hex"]:
+                #     self.__handle_open_fire()
+            
+            
+                # scities = [c for c in self.observation["cities"]]
+                # scities.sort(key = lambda c: self.distance(c["coord"], bop["cur_hex"]))
+                # second_near_city, third_near_city = scities[1], scities[2]
+                # second_near_ene =  [op for op in self.observation["operators"] if op["color"]!=self.color \
+                #             and self.map.get_distance(op["cur_hex"], second_near_city["coord"]) <= 1]
+                # third_near_ene = [op for op in self.observation["operators"] if op["color"]!=self.color \
+                #             and self.map.get_distance(op["cur_hex"], third_near_city["coord"]) <= 2]
+        return False       
+        
+        
+            
+        
+        
     
     #@szh 0404 重型战车的部署策略
     @time_decorator
@@ -1526,8 +1754,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self._move_action(obj_id, self.ops_destination[obj_id])
             if bop["cur_hex"] == closest_city["coord"]:
                 self.gen_occupy(obj_id)
-        
-         # 判断是否为机动算子
+        # 判断是否为机动算子
         # 判断夺控点周围有没有我方算子
         if self.color == closest_city["flag"]:
             tar = self.defend_check_nearby_enemy(obj_id)
@@ -1627,6 +1854,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         destination = None
         # tank 初始时刻判断敌方算子到我方距离 距离太近能打到就先别解聚  尤其算子在我方工事”前面“的时候
         bop = self.get_bop(obj_id)
+        self.__tank_handle_open_fire(obj_id)
         #if len(bop["move_path"]) > 0:  # 有未完成的机动
         if bop["speed"] != 0:
             return 
@@ -1757,19 +1985,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             return destination
         else:
             return [] 
-        
-    def __handle_open_fire(self, attacker_ID):
-        # 有啥能打的就都打一遍呗。这个还是共用CD的，不用考虑遍历。共用CD挺傻逼的讲道理。
+    
 
-        # 如果在机动，就停下来。
-        flag_is_stop = self.is_stop(attacker_ID)
-        if not(flag_is_stop):
-            # 没有is stop就是在机动呗，那就停下来。
-            self._stop_action(attacker_ID)
-
-        # 这个写法相当于每一步都检测一次，能打就打
-        # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
-        self._fire_action(attacker_ID)
 
     #@szh0404 步兵班解聚后占点  
     @time_decorator
@@ -2172,8 +2389,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
         )
         # 判断是否去其他点支援
-        if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
-            self.__tank_handle_open_fire(obj_id)
+        # if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
+        self.__tank_handle_open_fire(obj_id)
         if self.ops_destination[obj_id] == bop["cur_hex"]:
             self.ops_destination[obj_id] = ""
         """
@@ -2284,7 +2501,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             destination = [destination]
         self.ops_destination[obj_id]  = destination[0]
         self._move_action(obj_id, self.ops_destination[obj_id])  
-        return             
+        return      
+           
     #@szh0404  打个补丁 解聚之后周围随机数移动  
     def _defend_jieju_and_move(self, obj_id):
         bop = self.get_bop(obj_id)
@@ -2294,5 +2512,37 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         if bop["sub_type"] == BopSubType.Infantry:
             self.gen_change_state(obj_id, 2)
 
+class EnemyValue:
+    Infantry, Tank, Chariot =  10, 25, 10
+class FriendValue:
+    Infantry, Tank, Chariot =  30, 15, 5
+class RecurrentQueue(object):
+    def __init__(self, maxsize):
+        self.queue = [None] * maxsize
+        self.maxsize = maxsize
+        self.front = 0
+        self.rear = 0
+    def _length(self):
+        return (self.rear - self.front + self.maxsize) % self.maxsize
+
+    def _push_back(self, data):
+        if (self.rear + 1)%self.maxsize == self.front:
+            self._pop_front()
+        self.queue[self.rear] = data
+        self.rear = (self.rear + 1)%self.maxsize
+
+    def _pop_front(self):
+        if self.rear == self.front:  # 一般来说不会出现这种情况
+            return  None
+        else:
+            data = self.queue[self.front]
+            self.queue[self.front] = None
+            self.front = (self.front + 1)%self.maxsize
+            return data
+    def _get_item_by_index(self, index):
+        # if index >= self._length() or index < 0:
+        #     return
+        # print(index)
+        return self.queue[ (index) % self.maxsize ]
 
 #####################################################
