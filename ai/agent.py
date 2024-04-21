@@ -523,8 +523,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 然后设定状态就开始过去了。
         self.set_move_and_attack(UAV_unit,selected_pos,model="force")
 
-
-
     def IFV_transport(self,model="on"):
         # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
         # on 就是上车，off就是下车。
