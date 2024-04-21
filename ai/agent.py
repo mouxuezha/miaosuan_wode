@@ -302,7 +302,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 pos_candidate = method2(enemy_infantry_units)  
             else:
                 raise Exception("invalid list_A method, G!")
-            pos_candidate = method2(enemy_infantry_units)            
+            # pos_candidate = method2(enemy_infantry_units)            
         else:
             pos_candidate = target_pos
         return [pos_candidate, target_pos, target_pos] # 这里后面补一个target_pos是为了写循环的时候好写。
@@ -395,7 +395,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # if there is no more time, then just chong.
         time_assume = round(jvli * 20 * 1.1)
-        if time_assume < (self.end_time - self.num):
+        # time_assume = -114514
+        if time_assume > (self.end_time - self.num):
             # then just chong, without using naozi
             for unit in units:
                 self.set_move_and_attack(unit,self.target_pos,model="force")
