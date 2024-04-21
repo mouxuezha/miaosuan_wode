@@ -33,7 +33,7 @@ class Map:
         self.see = see_data
         current_dir = os.path.dirname(os.path.abspath(__file__))
         ob_file_path = os.path.join(current_dir, "ob_mat.npy")
-        self.ob = np.load(ob_file_path)
+        # self.ob = np.load(ob_file_path)
 
     def is_valid(self, pos):
         """
