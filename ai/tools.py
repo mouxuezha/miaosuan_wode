@@ -1,4 +1,18 @@
-import numpy as np 
+import numpy as np
+from time import time 
+from functools import wraps 
+
+
+def time_decorator(func):
+    @wraps(func)
+    def core(*args, **kwargs):
+        start = time()
+        res = func(*args, **kwargs)
+        print("function::{funcname} :: time costing: {time_costing}".format(\
+            funcname = func.__name__, time_costing = time() - start ) )
+        return res 
+    return  core
+
 
 def select_by_type(units,key="obj_id",value=0):
     # a common tool, for selecting units according to different keys.
@@ -97,6 +111,7 @@ def xy_to_hex(xy):
             xy[1] = 0 
         if (xy[0]*xy[1])<0:
             raise Exception("invalid xy in xy_to_hex")
+            # hex = -1 
         hex = 100*round(xy[1]) + xy[0]
         hex = round(hex)
         return hex
