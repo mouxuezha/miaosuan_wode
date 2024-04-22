@@ -276,8 +276,8 @@ if __name__ == "__main__":
 
         # single thread model
         # shishi = auto_run(env_name="defend")
-        # shishi = auto_run(env_name="crossfire")
-        shishi = auto_run(env_name="scout")
+        shishi = auto_run(env_name="crossfire")
+        # shishi = auto_run(env_name="scout")
         all_states_single,zip_name = shishi.run_single()
         # all_states_single,zip_name = shishi.run_single_with_time_limit(600)
         jieguo.get_result_single(all_states_single,zip_name)
