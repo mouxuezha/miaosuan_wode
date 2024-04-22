@@ -573,14 +573,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 # 要是上面那个在地图外，那就回到中间线上面的这个点。
                 pos_candidate =  self._xy_to_hex(xy_cut)
             pos_next_list.append(pos_candidate)
-        
+        pos_next_list.append(self.target_pos)
         return pos_next_list
        
     def UAV_patrol3(self,target_pos):
         # 这个是思想滑坡的UAV_patrol，生成一个从头到尾的Z字形的list，然后顺着那个飞。
         # 考虑加一个逻辑，在特定的情况下退化为之前的那个UAV_patrol。
         UAV_units = self.get_UAV_units()
-        if self.num<3:
+        if self.num<103:
             # 首先要算那一系列的点在哪里。
             pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos)
 
