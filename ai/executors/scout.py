@@ -126,7 +126,7 @@ class ScoutExecutor:
         self.unscouted = set()
         self.air_num = 0
         self.air_traj = {}
-        self.enemy_pos = {}  # {obj_id: hex}
+        self.enemy_pos = {}  # {obj_id: [hex, last_fire_step]}
         self.units = {}  # {obj_id: [last, cur]}
         self.suspected = set()
         self.repeat_map = {}  # 用于附加寻路代价，更倾向于探索未知区域
@@ -136,6 +136,8 @@ class ScoutExecutor:
         self.car_to_detect = {} # {obj_id:set()}
         self.car_xy = None
         self.ob_suspect = set()
+        self.suspect_hist = [] # [[step, set()],]
+        self.future_ob = {}  # {(start, end)): set()}
 
     def setup(self, task, agent):
         air_start = []
@@ -168,9 +170,9 @@ class ScoutExecutor:
         self.max_air_ob_num = max(self.air_ob.values())
         self.max_car_ob_num = max(self.car_ob.values())
         self.area2xy()
-        self.allocate_traj(agent, air_start_center, task["hex"])
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
+        self.allocate_traj(agent, air_start_center, task["hex"])
         # self.qrs_points = np.array([rc2qrs(hex2rc(point)) for point in self.area])
 
     def area2xy(self):
@@ -214,6 +216,11 @@ class ScoutExecutor:
         print(f"total traj: {total_traj}")
         split = len(total_traj) // self.air_num
         obj_ids = list(self.air_traj.keys())
+        for i in range(len(total_traj) - 1):
+            self.future_ob[(total_traj[i], total_traj[i + 1])] = self.future_ob_area(
+                agent, agent.owned[obj_ids[0]], total_traj[i + 1], total_traj[i]
+            )
+        
         for i in range(len(obj_ids)):
             self.air_traj[obj_ids[i]] = total_traj[split * i : split * (i + 1) + 1]
             print(f"obj_id: {obj_ids[i]}, traj: {self.air_traj[obj_ids[i]]}")
@@ -240,14 +247,32 @@ class ScoutExecutor:
         first = sorted_qrs_points[0][direc]
         last = sorted_qrs_points[-1][direc]
     
-    def future_ob_area(self, agent, unit, end):
+    def future_ob_area(self, agent, unit, end, begin=None):
         ob_area = set()
-        path = self.my_a_star(agent, unit, end)
+        path = self.my_a_star(agent, unit, end, begin)
         for point in path:
             ob_area |= agent.map.get_ob_area2(
                 point, BopType.Aircraft, BopType.Vehicle
             )
         return ob_area
+
+    def update_air_traj(self, agent):
+        for obj_id, traj in self.air_traj.items():
+            # while traj and traj[0] not in self.unscouted:
+            #     point = traj.pop(0)
+                # print(f"------point {point} has been observed------")
+            for i in range(len(traj)-1, -1, -1):
+                if i == 0:
+                    last_hex = agent.owned[obj_id]["cur_hex"]
+                else:
+                    last_hex = traj[i-1]
+                tmp_future_ob = self.future_ob.get((last_hex, traj[i]))
+                if not tmp_future_ob:
+                    tmp_future_ob = self.future_ob_area(agent, agent.owned[obj_id], traj[i], last_hex)
+                    self.future_ob[(last_hex, traj[i])] = tmp_future_ob
+                if not (self.unscouted & tmp_future_ob):
+                    print(f"remove {traj[i]} from obj{obj_id} traj")           
+                    traj.pop(i)
 
     def reallocate_air(self, agent):
         """
@@ -339,6 +364,8 @@ class ScoutExecutor:
                     break
             self.car_to_detect[obj_id] = convert_xy_to_hex(self.car_xy[clusters == i])
             car_hex_id.pop(obj_id)
+        for k, v in self.car_to_detect.items():
+            print(f"obj_id: {k}, car_to_detect: {len(v)}")
 
     def update_unscouted(self, agent, cur_hex, unit_type):
         # scouted = set(self.area) - self.unscouted
@@ -354,7 +381,7 @@ class ScoutExecutor:
         if cur_hex in self.area:
             self.repeat_map[cur_hex] += 0.2
 
-        # 顺道把可疑区域一块更新了
+        # 顺道把可疑区域一块更新了，suspect更新4
         last_suspect_num = len(self.suspected)
         excluded_suspect = self.suspected & new_ob
         self.suspected -= excluded_suspect
@@ -366,12 +393,14 @@ class ScoutExecutor:
             )
 
         # 丑陋的air_traj更新1
+        traj_ch_flag = False
         if last_suspect_num > cur_suspect_num:
             for obj_id, traj in self.air_traj.items():                
                 while traj and traj[0] in excluded_suspect:
                     point = traj.pop(0)
                     print(f"------point {point} has been observed------")
-        return last_suspect_num > cur_suspect_num, last_unscout_num > cur_unscout_num
+                    traj_ch_flag = True
+        return traj_ch_flag, last_unscout_num > cur_unscout_num
 
     def can_you_shoot_me(self, agent, cur_hex):
         cond = agent.map.basic[cur_hex // 100][cur_hex % 100]["cond"]
@@ -405,18 +434,28 @@ class ScoutExecutor:
                 max_dist = dist
                 farthest_hex = h
         return farthest_hex
+    
+    # def update_ob_suspect(self, agent, cur_hex):
+    #     self.ob_suspect &= agent.map.get_ob_area2(
+    #         cur_hex, BopType.Vehicle, BopType.Vehicle,
+    #         True, set(self.area)
+    #     )
 
-    @time_decorator
+    # @time_decorator
     def guess_enemy(self, cur_units, agent):
         old_units = set(self.units.keys())
         diff = list(old_units - cur_units)
         for missed_unit in diff:
             area_last = self.can_you_shoot_me(agent, self.units[missed_unit][0])
             area_cur = self.can_you_shoot_me(agent, self.units[missed_unit][1])
-            tmp_suspect = (area_cur - area_last) & self.unscouted - set(
-                self.enemy_pos.values()
-            )
-
+            tmp_suspect = area_cur - area_last
+            for k, v in self.enemy_pos.items():
+                if v[0] in tmp_suspect: # TODO and (agent.time.cur_step - v[1]) >= 75:
+                    tmp_suspect = set()
+                    break
+            tmp_suspect &= self.unscouted
+            self.suspect_hist.append([agent.time.cur_step, tmp_suspect])
+            # suspect更新1
             if len(self.suspected) == 0:
                 self.suspected = tmp_suspect
             else:
@@ -427,9 +466,9 @@ class ScoutExecutor:
                 else:
                     self.suspected = self.suspected | tmp_suspect
             self.units.pop(missed_unit)
-            self.car_to_detect.pop(missed_unit)
+            self.car_to_detect.pop(missed_unit) # TODO: check for pop necessity
             print(
-                f"missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}"
+                f"step {agent.time.cur_step} missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}"
             )
         for p in self.suspected:
             self.ob_suspect |= agent.map.get_ob_area2(
@@ -437,9 +476,10 @@ class ScoutExecutor:
                 True, set(self.area)
             )
 
-    def my_a_star(self, agent, unit, end):
+    def my_a_star(self, agent, unit, end, begin=None):
         move_type = decide_move_type(unit)
-        begin = unit["cur_hex"]
+        if not begin:
+            begin = unit["cur_hex"]
 
         frontier = [(0, random.random(), begin)]
         cost_so_far = {begin: 0}
@@ -501,18 +541,34 @@ class ScoutExecutor:
                 if not agent.map.can_observe(
                     h, enemy_hex, BopType.Vehicle, BopType.Vehicle
                 ):
-                    self.threat_map[h] += 0.8 * coeff
+                    self.threat_map[h] += 0.6 * coeff
                 else:
-                    self.threat_map[h] += 0.4 * coeff
+                    self.threat_map[h] += 0.3 * coeff
 
         cur_enemy = set(agent.enemy.keys())
         old_enemy = set(self.enemy_pos.keys())
         if len(cur_enemy) > len(old_enemy):
             new_enemy = cur_enemy - old_enemy
             for obj_id in new_enemy:
-                print(f"!!!!!! {agent.time.cur_step} find new enemy at {agent.enemy[obj_id]['cur_hex']}!!!!!!")
                 enemy_hex = agent.enemy[obj_id]["cur_hex"]
-                self.enemy_pos[obj_id] = enemy_hex
+                print(f"!!!!!! step {agent.time.cur_step} find new enemy at {enemy_hex}!!!!!!")
+                # suspect更新2
+                last_fire_step = 0
+                ids_to_pop = []
+                for i in range(len(self.suspect_hist)):
+                    if enemy_hex in self.suspect_hist[i][1]:
+                        self.suspected -= self.suspect_hist[i][1]
+                        for p in self.suspect_hist[i][1]:
+                            self.ob_suspect &= agent.map.get_ob_area2(
+                                p, BopType.Vehicle, BopType.Vehicle,
+                                True, set(self.area)
+                            )
+                        print(f"remove {len(self.suspect_hist[i][1])} suspected points, remaining: {len(self.suspected)}")
+                        last_fire_step = self.suspect_hist[i][0]
+                        ids_to_pop.append(i)
+                for i in ids_to_pop[::-1]:
+                    self.suspect_hist.pop(i)        
+                self.enemy_pos[obj_id] = [enemy_hex, last_fire_step]
                 update_enemy_threat_area(agent, enemy_hex, 1)
             return 1
         # elif len(cur_enemy) < len(old_enemy):
@@ -583,10 +639,10 @@ class ScoutExecutor:
         enemy_change = self.check_enemy(agent)
         if len(agent.owned) < len(self.units):
             cur_units = set(agent.owned.keys())
-            if enemy_change != 1:
-                self.guess_enemy(cur_units, agent)
-                if self.suspected:
-                    self.reallocate_air(agent)
+            # if enemy_change != 1:
+            self.guess_enemy(cur_units, agent)
+            if self.suspected:
+                self.reallocate_air(agent)
             self.calc_car_to_detect(agent)
 
         # 感觉task["unit_ids"]一直是空的，可能人机混合的时候有用？
@@ -595,15 +651,15 @@ class ScoutExecutor:
             available_units = set(agent.valid_units)
 
         # 遍历更新探测状态
-        suspect_change = False
+        air_traj_change = False
         unscout_change = False
         move_flag = False
         for obj_id, unit in agent.valid_units.items():
             if unit["cur_pos"] == 0:  # 完成一格移动
                 cur_hex = unit["cur_hex"]
                 self.update_unit(obj_id, cur_hex)
-                susp_ch, unsc_ch = self.update_unscouted(agent, cur_hex, unit["type"])
-                suspect_change |= susp_ch
+                traj_ch, unsc_ch = self.update_unscouted(agent, cur_hex, unit["type"])
+                air_traj_change |= traj_ch
                 unscout_change |= unsc_ch
                 # 丑陋的1air_traj更新2
                 if unit["type"] == BopType.Aircraft:
@@ -620,12 +676,13 @@ class ScoutExecutor:
         # 更新算子目标点  
         if agent.time.cur_step == 152: # 解聚完初始化各车待探索区域
             print("car to detect init")
-            self.calc_car_to_detect(agent)
-            for k, v in self.car_to_detect.items():
-                print(f"obj_id: {k}, car_to_detect: {len(v)}")
-            
+            self.calc_car_to_detect(agent)            
         
-        if suspect_change and self.suspected:
+        # air_traj更新3
+        self.update_air_traj(agent)
+        # for obj_id, traj in self.air_traj.items():
+        #     print(f"obj_id: {obj_id}, traj: {len(traj)}")
+        if air_traj_change and self.suspected:
             # print("reallocate air")
             self.reallocate_air(agent)
 
@@ -638,7 +695,13 @@ class ScoutExecutor:
                 if self.car_ob[p] < min_ob:
                     min_ob = self.car_ob[p]
                     add_p = p
+            # suspect更新3
             self.suspected.add(add_p)
+            self.ob_suspect |= agent.map.get_ob_area2(
+                add_p, BopType.Vehicle, BopType.Vehicle,
+                True, set(self.area)
+            )
+            
             min_dist = 100
             for obj_id in self.air_traj.keys():
                 tmp_dist = agent.map.get_distance(agent.owned[obj_id]["cur_hex"], add_p)
