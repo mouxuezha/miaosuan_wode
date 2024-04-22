@@ -1367,20 +1367,32 @@ class BaseAgent(ABC):
             a1 = 10 # 在敌人那格，0距离，type=0，thus field=a1
             a2 = 1 
             if threaten_source["type"] == 0:
-                # 有敌方单位，就别去送了。
+                # 有敌方单位，就别去送了。这个是避免骑到人家脸上的。
                 # field_value = field_value + a1*3 / (a2 + jvli) # never touch the enemy. 
-                field_value = field_value + a1 / (a2 + jvli) # never touch the enemy. 
+                if jvli>10:
+                    field_value = field_value + 0 
+                else:
+                    field_value = field_value + a1 / (a2 + jvli) # never touch the enemy. 
             elif threaten_source["type"] == 1:
                 # 有炮火覆盖的地方，如果快开始爆炸了就别过去送了，绕一下。
                 if threaten_source["delay"] == 0:
-                    field_value = field_value + a1*2 / (a2 + 1 + jvli*100) # 这个只要别去那一格就行了，周围其他地方不影响的
+                    if jvli>1:
+                        field_value = field_value + 0 
+                    else:
+                        field_value = field_value + a1*2 / (a2 + 1 + jvli) # 这个只要别去那一格就行了，周围其他地方不影响的
             elif threaten_source["type"] == 2: 
                 # 之前有东西损失过的地方，如果人家CD快转好了就别过去送了，绕一下。
-                if threaten_source["delay"] < 30:
-                    field_value =field_value + a1 / (a2 + 1 + jvli)
+                if jvli>3:
+                    field_value = field_value + 0 
+                else:
+                    if threaten_source["delay"] < 30:
+                        field_value =field_value + a1 / (a2 + 1 + jvli)
             elif threaten_source["type"] == -1:
                 # 有己方单位存活，认为那附近安全一点。负的威胁度
-                field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
+                if jvli>2:
+                    field_value = field_value + 0 
+                else:
+                    field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
 
         #  using tongshi to modify the field further.
         # 如果已经算过了，就别重新算一遍这个了。
