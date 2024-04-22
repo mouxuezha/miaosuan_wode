@@ -1485,7 +1485,7 @@ class BaseAgent(ABC):
         else:
             return False
         
-    def set_move_and_attack(self, attacker_ID, target_pos,model="normal"):
+    def set_move_and_attack(self, attacker_ID, target_pos,model="normal", **kargs):
         # 还得是直接用字典，不要整列表。整列表虽然可以整出类似红警的点路径点的效果，但是要覆盖就得额外整东西。不妥
         # 直接做成模式可选择的就好了，要覆盖就覆盖，不要的话可以不覆盖。
         attacker_ID = self._set_compatible(attacker_ID)
@@ -1497,9 +1497,18 @@ class BaseAgent(ABC):
             else:
                 # 说明这个里面还没有pos_steped_set这
                 flag_pos_steped_set = False
+            
+            if "pos_next_list" in self.abstract_state[attacker_ID]:
+                # 说明里面已经有pos_next_list这个了
+                pos_next_list = self.abstract_state[attacker_ID]["pos_next_list"]
+                flag_pos_next_list = True
+            else:
+                flag_pos_next_list=False
+
         except:
             # 那就说明之前没有为这个ID定义过
             flag_pos_steped_set = False
+            flag_pos_next_list = False
 
         if model=="normal":
             # 默认模式不覆盖，检测如果已经是move_and_attack状态了，就不做操作，
@@ -1527,6 +1536,21 @@ class BaseAgent(ABC):
             self.abstract_state[attacker_ID]["pos_steped_set"] = pos_steped_set
             pass
         
+        # 同样，作为抽象状态的一部分，“要去的点”也应该是全局的，至少在某个命令的范畴内是全局的，而且得是有顺序的list
+        if flag_pos_next_list==False:
+            pos_next_list=[target_pos]
+            self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
+        else:
+            # 如果有了，那就别乱改，加回去。除非是要改再改
+            if "pos_next_list" in kargs:
+                # 如果输入的里面有这个，就直接覆盖了。直接覆盖好不好，还得后面看
+                pos_next_list = kargs["pos_next_list"]
+                # 如果发命令的时候没有带这个参数，就可以退回到无事发生的老版本。
+            else:
+                # 没有的话就先无事发生。
+                pass
+            self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
+            pass
 
     def set_hidden_and_alert(self, attacker_ID):
         # 这个就是原地坐下，调成隐蔽状态。
@@ -1810,6 +1834,79 @@ class BaseAgent(ABC):
         else:
             # 那就是到了，那就要改抽象状态里面了。
             self.__finish_abstract_state(attacker_ID)      
+    
+    def __handle_move_and_attack_UAV(self,attacker_ID,pos_next_list):
+        # 这个是无人机的，怎么快怎么来，不要避障，不读势场。
+        unit = self.get_bop(attacker_ID)
+        attacker_pos =self.get_pos(attacker_ID)
+        attacker_xy = self._hex_to_xy(attacker_pos)
+        target_pos = pos_next_list[0]
+        target_xy = self._hex_to_xy(target_pos)
+        vector_xy = target_xy - attacker_xy
+        jvli = self.distance(target_pos,attacker_pos) 
+
+        # 先打了再说。
+        self._fire_action(attacker_ID)
+
+        # 然后该打的打完了，就继续move呗
+        attacker_pos = self.get_pos(attacker_ID)
+        # if arrived, then stay.
+        if np.linalg.norm(vector_xy) <0.000001:
+            if len(pos_next_list)==1:
+                # target_pos_list 里面只有最后一个点了，而且去到了，那就是真的到了，可以退出该抽象状态
+                self.__finish_abstract_state(attacker_ID)
+            else:
+                # 那就是target_pos_list 里面还有点，但是这个点已经到了，那就把这个点从list里面删了，然后再弄。
+                pos_next_list.pop(0) # 这个跟直接del好像是一样的？但是看着阳间一点。
+                self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
+            return 
+        
+        try:
+            flag_arrive = (unit["move_path"][-1]==attacker_pos)
+            # 路径里的点到了，就认为到了
+        except:
+            # 要是没有路径点，那就看是不是stop
+            flag_arrive=False
+            # if unit["stop"]==0:
+            #     flag_arrive=False
+            # elif unit["stop"]==1:
+            #     flag_arrive=True
+            if unit["speed"]==0:
+                flag_arrive=True
+            else:
+                flag_arrive=False
+        
+
+        if flag_arrive==False:
+            # 走着呢，由于都是走一格，所以这个就没有什么所谓了吧。
+            pass 
+        elif flag_arrive==True:        
+            # 回头路机制取消了，反正又不检测势场。
+            neighbor_pos_list = self.map.get_neighbors(attacker_pos)
+            pos_next = self.find_pos_vector(attacker_pos, neighbor_pos_list, vector_xy)
+
+            self._move_action(attacker_ID, pos_next)
+            self.abstract_state[attacker_ID]["pos_steped_set"].add(pos_next)
+         
+        if jvli > 0:
+            # 那就是还没到，那就继续移动
+            self.abstract_state[attacker_ID]["flag_moving"] = not(unit["stop"])
+            self.abstract_state[attacker_ID]["jvli"] = jvli
+            # if flag_arrive==False:
+                # this is to tackle the case that abstract_state forced change to move and attack.
+                # self._move_action(attacker_ID, pos_next)
+        else:
+            # 那就是到了，那就要改抽象状态里面了。
+            # self.__finish_abstract_state(attacker_ID) # 与原版相比，只要修改到达条件，好像就能够完成真正意义上的list_A了。
+            # 甚至和微操那部分都未必会相互影响。 不过还是别搞那么极端的。
+            if len(pos_next_list)==1:
+                # target_pos_list 里面只有最后一个点了，而且去到了，那就是真的到了，可以退出该抽象状态
+                self.__finish_abstract_state(attacker_ID)
+            else:
+                # 那就是target_pos_list 里面还有点，但是这个点已经到了，那就把这个点从list里面删了，然后再弄。
+                pos_next_list.pop(0) # 这个跟直接del好像是一样的？但是看着阳间一点。
+                self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
+            return             
 
     def __handle_hidden_and_alert(self, attacker_ID):
         # 先来个基础版的，原地蹲下，不要取地形了。
