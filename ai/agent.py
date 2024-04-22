@@ -541,8 +541,55 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             selected_pos= self.target_pos
         # 然后设定状态就开始过去了。
         self.set_move_and_attack(UAV_unit,selected_pos,model="force")
+    
+    def get_pos_UAV_patrol(self,UAV_units, target_pos):
+        # 根据当前无人机位置和目标位置，做一个折线的路径出来。
+        UAV_pos = self.get_pos(UAV_units[0]) # 原则上能用统一接口尽量用统一接口，别搞的到处都是读字典的字段。
+        UAV_xy = self._hex_to_xy(UAV_pos) # 这个视为是起点了
+        target_xy = self._hex_to_xy(target_pos)
 
+        vector_xy = target_xy - UAV_xy
+        # 一个理解：现在本来就是粗糙的路子，所以别走精细的，搞个锯齿形状的也就罢了。
+        # 无人机8秒一格，车20秒一格，夹角66度的时候，投影出来速度是一样的，sin(66.42)=0.9165
+        
+        L_xy = np.linalg.norm(vector_xy)
+        n_zhuanzhe = 4 # 这个看情况改改。本来可以做个动态的，但是好像也没有什么必要
+        L_depart  = L_xy / n_zhuanzhe
+        vector_xy_normal = vector_xy / L_xy 
 
+        # 求两个垂直于路径的法向量。
+        n1_xy = np.array([vector_xy[1], -1*vector_xy[0]]) / L_xy
+        # n2_xy = -1*n1_xy
+
+        flag_zhengfu = 1 
+        pos_next_list = [] 
+        for i in range(n_zhuanzhe):
+            flag_zhengfu = flag_zhengfu * -1 # 每回合交替来正负号。
+            xy_cut = UAV_xy + L_depart*(i+1)*vector_xy_normal
+            xy_candidate = xy_cut + L_depart*flag_zhengfu*n1_xy
+            try:
+                pos_candidate = self._xy_to_hex(xy_candidate)
+            except:
+                # 要是上面那个在地图外，那就回到中间线上面的这个点。
+                pos_candidate =  self._xy_to_hex(xy_cut)
+            pos_next_list.append(pos_candidate)
+        
+        return pos_next_list
+       
+    def UAV_patrol3(self,target_pos):
+        # 这个是思想滑坡的UAV_patrol，生成一个从头到尾的Z字形的list，然后顺着那个飞。
+        # 考虑加一个逻辑，在特定的情况下退化为之前的那个UAV_patrol。
+        UAV_units = self.get_UAV_units()
+        if self.num<3:
+            # 首先要算那一系列的点在哪里。
+            pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos)
+
+            # 然后去呗，好像没有什么不妥的地方。
+            for unit in UAV_units:
+                self.set_move_and_attack(unit,target_pos,model="force",pos_next_list=pos_next_list)
+        elif self.num>800:
+            # 讲道理还是这个在部队前方的比较靠谱吧。反正看看效果
+            self.UAV_patrol(target_pos)
 
     def IFV_transport(self,model="on"):
         # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
