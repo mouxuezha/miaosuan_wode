@@ -553,7 +553,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 无人机8秒一格，车20秒一格，夹角66度的时候，投影出来速度是一样的，sin(66.42)=0.9165
         
         L_xy = np.linalg.norm(vector_xy)
-        n_zhuanzhe = 4 # 这个看情况改改。本来可以做个动态的，但是好像也没有什么必要
+        n_zhuanzhe = 5 # 这个看情况改改。本来可以做个动态的，但是好像也没有什么必要
         L_depart  = L_xy / n_zhuanzhe
         vector_xy_normal = vector_xy / L_xy 
 
@@ -614,7 +614,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         
         # 然后排序
         pos_and_value_sorted = pos_and_value_sort[pos_and_value_sort[:,1].argsort()]
-        
+        pos_and_value_sorted = np.flipud(pos_and_value_sorted) 
         # 然后取前面几个，然后再按距离排个序
         pos_and_value_sorted = pos_and_value_sorted[0:10, :]
         pos_and_value_sorted = pos_and_value_sorted[pos_and_value_sorted[:,2].argsort()]
@@ -631,10 +631,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 这个是思想滑坡的UAV_patrol，生成一个从头到尾的Z字形的list，然后顺着那个飞。
         # 考虑加一个逻辑，在特定的情况下退化为之前的那个UAV_patrol。
         UAV_units = self.get_UAV_units()
-        if self.num<103:
+        if self.num==1:
             # 首先要算那一系列的点在哪里。
-            # pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos) # 这个是走折线的
-            pos_next_list = self.get_pos_UAV_patrol2(UAV_units, target_pos)  # 这个是本昌哥说的那个“优先高威胁点”的
+            pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos) # 这个是走折线的
+            # pos_next_list = self.get_pos_UAV_patrol2(UAV_units, target_pos)  # 这个是本昌哥说的那个“优先高威胁点”的
             # 讲道理直接把这俩加起来其实也是个说法的呀。
 
             # 然后去呗，好像没有什么不妥的地方。
@@ -1091,7 +1091,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.F2A(target_pos)
             pass # disabled for tiaoshi
         
-        if (self.num % 100==0) and (self.num>-200) and (self.num<1100):
+        if (self.num % 100==1) and (self.num>-200) and (self.num<1100):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.这里面是带骑脸目标、停车、引导打击等逻辑的，但是好像不是太适合现在这个场景。
             # self.UAV_patrol(target_pos)
