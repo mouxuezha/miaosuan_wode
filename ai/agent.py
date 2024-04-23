@@ -1037,7 +1037,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.F2A(target_pos)
             pass # disabled for tiaoshi
         
-        if (self.num % 100==0) and (self.num>-200) and (self.num<1000):
+        if (self.num % 100==0) and (self.num>-200) and (self.num<1100):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.这里面是带骑脸目标、停车、引导打击等逻辑的，但是好像不是太适合现在这个场景。
             # self.UAV_patrol(target_pos)
@@ -1048,7 +1048,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
             # 抢救一下，无人机给一些新的说法
             # self.UAV_patrol2(self.unscouted)
-        else:
+        elif self.num>1100:
             self.group_A(UAV_units,target_pos)
         return 
 
