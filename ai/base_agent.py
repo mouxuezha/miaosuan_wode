@@ -1537,17 +1537,14 @@ class BaseAgent(ABC):
             pass
         
         # 同样，作为抽象状态的一部分，“要去的点”也应该是全局的，至少在某个命令的范畴内是全局的，而且得是有顺序的list
-        if flag_pos_next_list==False:
-            pos_next_list=[target_pos]
-            self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
-        else:
-            # 如果有了，那就别乱改，加回去。除非是要改再改
-            if "pos_next_list" in kargs:
+        if "pos_next_list" in kargs:
                 # 如果输入的里面有这个，就直接覆盖了。直接覆盖好不好，还得后面看
                 pos_next_list = kargs["pos_next_list"]
-                # 如果发命令的时候没有带这个参数，就可以退回到无事发生的老版本。
+        else:
+            if flag_pos_next_list==False:
+                pos_next_list=[target_pos]
+                self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
             else:
-                # 没有的话就先无事发生。
                 pass
             self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
             pass
