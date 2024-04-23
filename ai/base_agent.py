@@ -1538,8 +1538,9 @@ class BaseAgent(ABC):
         
         # 同样，作为抽象状态的一部分，“要去的点”也应该是全局的，至少在某个命令的范畴内是全局的，而且得是有顺序的list
         if "pos_next_list" in kargs:
-                # 如果输入的里面有这个，就直接覆盖了。直接覆盖好不好，还得后面看
-                pos_next_list = kargs["pos_next_list"]
+            # 如果输入的里面有这个，就直接覆盖了。直接覆盖好不好，还得后面看
+            pos_next_list = kargs["pos_next_list"]
+            self.abstract_state[attacker_ID]["pos_next_list"] = pos_next_list
         else:
             if flag_pos_next_list==False:
                 pos_next_list=[target_pos]
@@ -1730,6 +1731,12 @@ class BaseAgent(ABC):
         # 这个是进一步升级来的，不要路径点序列了，一次只走一格，每一格都判断威胁程度 
                
         unit = self.get_bop(attacker_ID)
+        # if it is UAV then using its own moving logic.
+        sub_type = unit["sub_type"]
+        if sub_type == 5:
+            pos_next_list = self.abstract_state[attacker_ID]["pos_next_list"]
+            self.__handle_move_and_attack_UAV(attacker_ID,pos_next_list)
+            return
         attacker_pos =self.get_pos(attacker_ID)
         attacker_xy = self._hex_to_xy(attacker_pos)
         target_xy = self._hex_to_xy(target_pos)
