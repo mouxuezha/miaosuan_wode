@@ -587,6 +587,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 然后去呗，好像没有什么不妥的地方。
             for unit in UAV_units:
                 self.set_move_and_attack(unit,target_pos,model="force",pos_next_list=pos_next_list)
+                
         elif self.num>800:
             # 讲道理还是这个在部队前方的比较靠谱吧。反正看看效果
             self.UAV_patrol(target_pos)
