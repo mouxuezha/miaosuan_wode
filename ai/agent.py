@@ -575,18 +575,72 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             pos_next_list.append(pos_candidate)
         pos_next_list.append(self.target_pos)
         return pos_next_list
-       
+
+    def get_pos_UAV_patrol2(self, UAV_units, target_pos):
+        # 这个用来服务于本昌哥说的那种所谓“找个区域里覆盖路径最大的点然后过去”
+        UAV_pos = self.get_pos(UAV_units[0]) # 原则上能用统一接口尽量用统一接口，别搞的到处都是读字典的字段。
+        pos_ave = self.get_pos_average(self.status["operators"])
+        
+        # 调人家的地图算个路径。反正这玩意只在开始的时候调。
+        assumed_path = list(self.map.gen_move_route(pos_ave,target_pos,0))
+
+        # 调人家的地图接口，来一系列的可疑的点
+        pos_center = self.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
+        
+        area = list(self.map.get_grid_distance(pos_center, 0, 30))
+        geshu_area = len(area)
+
+        # 然后开始算呗。对area里面的可疑的每一个点，都计算能够打到路上的多少点，然后排序嘛。
+        # 0的就不参与排序了。然后别的再算一堆距离做一个跟距离相关的排序，然后直接照着那个飞完事了，岂不美哉。
+        pos_and_value_sort = np.zeros((geshu_area,3))
+        for i in range(geshu_area):
+            count_value = 0
+            enemy_pos = area[i]
+            enemy_type = 2
+            my_type = 2 # 直接用车辆了，
+            for pos_single in assumed_path:
+                # 能打到，就路径里面+1
+                # 调地图，看是不是会被打到。
+                flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+                if flag_can_shoot==True:
+                    count_value = count_value + 1
+                else:
+                    pass
+            # 调距离，准备后面
+            jvli = self.distance(pos_ave,enemy_pos)
+            pos_and_value_sort[i,0] = enemy_pos 
+            pos_and_value_sort[i,1] = count_value
+            pos_and_value_sort[i,1] = jvli
+        
+        # 然后排序
+        pos_and_value_sorted = pos_and_value_sort[pos_and_value_sort[:,1].argsort()]
+        
+        # 然后取前面几个，然后再按距离排个序
+        pos_and_value_sorted = pos_and_value_sorted[0:10, :]
+        pos_and_value_sorted = pos_and_value_sorted[pos_and_value_sorted[:,2].argsort()]
+
+        pos_list_selected = pos_and_value_sorted[:,0]
+        # value_list_selected = pos_and_value_sorted[:,1]
+        # change to int, or there would be type error in map.py
+        pos_list_selected = pos_list_selected.astype(int)
+        # using np.int64 would cause trouble.
+        pos_list_selected = pos_list_selected.tolist()
+        return pos_list_selected
+
     def UAV_patrol3(self,target_pos):
         # 这个是思想滑坡的UAV_patrol，生成一个从头到尾的Z字形的list，然后顺着那个飞。
         # 考虑加一个逻辑，在特定的情况下退化为之前的那个UAV_patrol。
         UAV_units = self.get_UAV_units()
         if self.num<103:
             # 首先要算那一系列的点在哪里。
-            pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos)
+            # pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos) # 这个是走折线的
+            pos_next_list = self.get_pos_UAV_patrol2(UAV_units, target_pos)  # 这个是本昌哥说的那个“优先高威胁点”的
+            # 讲道理直接把这俩加起来其实也是个说法的呀。
 
             # 然后去呗，好像没有什么不妥的地方。
             for unit in UAV_units:
                 self.set_move_and_attack(unit,target_pos,model="force",pos_next_list=pos_next_list)
+                
         elif self.num>800:
             # 讲道理还是这个在部队前方的比较靠谱吧。反正看看效果
             self.UAV_patrol(target_pos)
