@@ -271,7 +271,7 @@ class ScoutExecutor:
                     tmp_future_ob = self.future_ob_area(agent, agent.owned[obj_id], traj[i], last_hex)
                     self.future_ob[(last_hex, traj[i])] = tmp_future_ob
                 if not (self.unscouted & tmp_future_ob):
-                    print(f"remove {traj[i]} from obj{obj_id} traj")           
+                    # print(f"remove {traj[i]} from obj{obj_id} traj")           
                     traj.pop(i)
 
     def reallocate_air(self, agent):
@@ -450,7 +450,7 @@ class ScoutExecutor:
             area_cur = self.can_you_shoot_me(agent, self.units[missed_unit][1])
             tmp_suspect = area_cur - area_last
             for k, v in self.enemy_pos.items():
-                if v[0] in tmp_suspect: # TODO and (agent.time.cur_step - v[1]) >= 75:
+                if v[0] in tmp_suspect and (agent.time.cur_step - v[1]) >= 75:
                     tmp_suspect = set()
                     break
             tmp_suspect &= self.unscouted
