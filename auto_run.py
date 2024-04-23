@@ -487,6 +487,7 @@ if __name__ == "__main__":
     for i in range(10):
         shishi = auto_run(env_name="defend")
         # shishi = auto_run(env_name="crossfire")
+
         # shishi = auto_run(env_name="scout")
         all_states_single,zip_name = shishi.run_single()
         jieguo.get_result_single(all_states_single,zip_name)
