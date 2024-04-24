@@ -153,7 +153,7 @@ class ScoutExecutor:
                 car_start.append(unit["cur_hex"])
                 
         air_start_center = sum(air_start) // len(air_start)
-        car_start_center = sum(car_start) // len(car_start)
+        # car_start_center = sum(car_start) // len(car_start)
 
         self.area = list(agent.map.get_grid_distance(task["hex"], 0, task["radius"]))
         self.area.sort()
@@ -365,7 +365,8 @@ class ScoutExecutor:
             self.car_to_detect[obj_id] = convert_xy_to_hex(self.car_xy[clusters == i])
             car_hex_id.pop(obj_id)
         for k, v in car_hex_id.items():
-            self.car_to_detect[k] = set()
+            nearest_hex, _ = self.get_nearest(agent, v, clusters_centers)
+            self.car_to_detect[k] = set([nearest_hex])
         for k, v in self.car_to_detect.items():
             print(f"obj_id: {k}, car_to_detect: {len(v)}")
 
@@ -594,11 +595,15 @@ class ScoutExecutor:
         def calc_score(point):
             # arbitrary parameter4
             alpha = [1, 0, -5, -5]
+            ob_area = agent.map.get_ob_area2(
+                point, BopType.Vehicle, BopType.Vehicle,
+                False, self.unscouted
+            )
             obed_area = agent.map.get_ob_area2(
                 point, BopType.Vehicle, BopType.Vehicle,
                 True, set(self.area)
             )
-            score = alpha[0] * self.car_ob[point] + alpha[1] * len(obed_area) + \
+            score = alpha[0] * len(ob_area) + alpha[1] * len(obed_area) + \
                 alpha[2] * self.repeat_map[point] + alpha[3] * self.threat_map[point]
             if point in self.ob_suspect:
                 score += 10
@@ -606,13 +611,13 @@ class ScoutExecutor:
         
         # 车辆的侦察逻辑
         def vehicle_scout(obj_id):
-            if not self.car_to_detect.get(obj_id):
-                destination = random.choice(list(self.unscouted))
-            else:
+            base_area = self.car_to_detect.get(obj_id, set()) & self.unscouted
+            while not base_area:
+                self.calc_car_to_detect(agent)
                 base_area = self.car_to_detect[obj_id] & self.unscouted
-                while not base_area:
-                    self.calc_car_to_detect(agent)
-                    base_area = self.car_to_detect[obj_id] & self.unscouted
+            if len(base_area) == 1:
+                destination = list(base_area)[0]
+            else:
                 tmp_area = set()
                 radius = 4
                 cur_hex = agent.owned[obj_id]["cur_hex"]
@@ -651,7 +656,7 @@ class ScoutExecutor:
         # 遍历更新探测状态
         air_traj_change = False
         unscout_change = False
-        move_flag = False
+        # move_flag = False
         for obj_id, unit in agent.valid_units.items():
             if unit["cur_pos"] == 0:  # 完成一格移动
                 cur_hex = unit["cur_hex"]
@@ -665,11 +670,11 @@ class ScoutExecutor:
                         self.air_traj[obj_id].pop(0)
                         # print(f"air {obj_id} arrived {cur_hex}, air_traj: {self.air_traj[obj_id][:3]}")
                 # print(f"remain: {len(self.unscouted)}")
-            if unit["type"] == BopType.Vehicle:
-                # if obj_id not in self.car_dest.keys():
-                #     self.car_dest[obj_id] = -1
-                if ActType.Move in agent.valid_actions[obj_id]:
-                    move_flag = True
+            # if unit["type"] == BopType.Vehicle:
+            #     # if obj_id not in self.car_dest.keys():
+            #     #     self.car_dest[obj_id] = -1
+            #     if ActType.Move in agent.valid_actions[obj_id]:
+            #         move_flag = True
         
         # 更新算子目标点  
         if agent.time.cur_step == 152: # 解聚完初始化各车待探索区域
@@ -683,7 +688,8 @@ class ScoutExecutor:
         if air_traj_change and self.suspected:
             # print("reallocate air")
             self.reallocate_air(agent)
-
+        
+        # arbitrary parameter5
         if agent.time.cur_step > 1401 and len(self.unscouted) < 400 and unscout_change:
             # print(f"remain {len(self.unscouted)} unscouted: {self.unscouted}")
             print(f"%%%%%%%remain {len(self.unscouted)}%%%%%%%")
