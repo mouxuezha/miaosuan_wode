@@ -6,3 +6,7 @@ scout_output.txt
 todo.md
 ai/ob_mat.npy
 program.prof
+agent_demo
+ai/agent_local0421.py
+ai/base_agent0421.py
+auto_run.py
