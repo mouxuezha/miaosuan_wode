@@ -160,11 +160,11 @@ class ScoutExecutor:
         self.unscouted = set(self.area.copy())
         for point in self.area:
             air_ob_area = agent.map.get_ob_area2(
-                point, BopType.Aircraft, BopType.Vehicle, set(self.area)
+                point, BopType.Aircraft, BopType.Vehicle, constrain_area=set(self.area)
             )
             self.air_ob[point] = len(air_ob_area)
             car_ob_area = agent.map.get_ob_area2(
-                point, BopType.Vehicle, BopType.Vehicle, set(self.area)
+                point, BopType.Vehicle, BopType.Vehicle, constrain_area=set(self.area)
             )
             self.car_ob[point] = len(car_ob_area)
         self.max_air_ob_num = max(self.air_ob.values())
@@ -334,7 +334,7 @@ class ScoutExecutor:
 
         clusters_centers = []
         if len(self.car_xy) <= n:
-            clusters_centers = self.unscouted
+            clusters_centers = list(self.unscouted)
             clusters = np.arange(len(self.car_xy))
         else:
             kmeans = KMeans(n_clusters=n, tol=1e-2, max_iter=30).fit(self.car_xy)
@@ -364,6 +364,8 @@ class ScoutExecutor:
                     break
             self.car_to_detect[obj_id] = convert_xy_to_hex(self.car_xy[clusters == i])
             car_hex_id.pop(obj_id)
+        for k, v in car_hex_id.items():
+            self.car_to_detect[k] = set()
         for k, v in self.car_to_detect.items():
             print(f"obj_id: {k}, car_to_detect: {len(v)}")
 
@@ -375,7 +377,7 @@ class ScoutExecutor:
         self.unscouted -= new_ob
         cur_unscout_num = len(self.unscouted)
 
-        # 顺道把奖励地图更新了
+        # 顺道把奖励地图更新了，arbitrary parameter1
         for h in new_ob:
             self.repeat_map[h] += 0.2
         if cur_hex in self.area:
@@ -434,12 +436,6 @@ class ScoutExecutor:
                 max_dist = dist
                 farthest_hex = h
         return farthest_hex
-    
-    # def update_ob_suspect(self, agent, cur_hex):
-    #     self.ob_suspect &= agent.map.get_ob_area2(
-    #         cur_hex, BopType.Vehicle, BopType.Vehicle,
-    #         True, set(self.area)
-    #     )
 
     # @time_decorator
     def guess_enemy(self, cur_units, agent):
@@ -496,6 +492,7 @@ class ScoutExecutor:
                     if neigh in self.area:
                         if unit["type"] == BopType.Vehicle:
                             neigh_cost += self.threat_map[neigh]
+                            # arbitrary parameter3
                             neigh_cost -= self.car_ob[neigh] / self.max_car_ob_num / 5
                         # TODO: 这个else可能不需要
                         # else:
@@ -532,7 +529,7 @@ class ScoutExecutor:
 
         def update_enemy_threat_area(agent, enemy_hex, coeff=1):
             """
-            根据敌人所处地形更新威胁地图，更新值是拍脑袋定的
+            根据敌人所处地形更新威胁地图，更新值是拍脑袋定的，arbitrary parameter2
             """
             st_area = agent.map.get_shoot_area(enemy_hex, BopType.Vehicle) & set(
                 self.area
@@ -595,7 +592,8 @@ class ScoutExecutor:
             return destination
 
         def calc_score(point):
-            alpha = [1, 0, -1, -1]
+            # arbitrary parameter4
+            alpha = [1, 0, -5, -5]
             obed_area = agent.map.get_ob_area2(
                 point, BopType.Vehicle, BopType.Vehicle,
                 True, set(self.area)
