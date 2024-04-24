@@ -181,7 +181,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         distance_start = 0
         distance_end = 1 
         for unit in units_VIP:
-            pos_single = self.get_bop(unit)
+            pos_single = unit["cur_hex"]
             pos_single_set = self.map.get_grid_distance(pos_single, distance_start, distance_end)
             pos_around_set = pos_around_set | pos_single_set
         
@@ -189,7 +189,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         pos_around_list = list(pos_around_set)
         geshu = len(pos_around_list)
         neighbor_field_array = np.zeros((geshu,2))
-        for neighbor_pos_single in pos_around_list:
+        for i in range(geshu):
+            neighbor_pos_single = pos_around_list[i]
             neighbor_field_single = self.threaten_field[neighbor_pos_single]
             neighbor_field_array[i,0] = neighbor_pos_single
             neighbor_field_array[i,1] = neighbor_field_single
