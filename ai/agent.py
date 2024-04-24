@@ -537,8 +537,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 然后设定状态就开始过去了。
         self.set_move_and_attack(UAV_unit,selected_pos,model="force")
 
-
-
     def IFV_transport(self,model="on"):
         # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
         # on 就是上车，off就是下车。
@@ -2378,54 +2376,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # if bop["weapon_cool_time"] == 0 and closest_enemy is not None and self.distance(closest_enemy["cur_hex"], bop["cur_hex"]) >=2: 
         #     self.__handle_open_fire(obj_id)   
-
-
-    #@szh 0404 战车开火策略
-    # @time_decorator
-    # def defend_chariot_fire_stage(self, obj_id):
-    #     destination = None
-    #     bop = self.get_bop(obj_id)
-    #     if len(bop["move_path"]) != 0:         # 如果当前还在行进中
-    #         #destination = bop["move_path"][-1]
-    #         return 
-    #     closest_city = min(
-    #         self.observation["cities"],
-    #         key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
-    #     )
-    #     if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
-    #         self.__handle_open_fire(obj_id)
-    #     flag_ene_is_around_city = False
-    #     city_ene = [op for op in self.observation["operators"] if op["color"]!=self.color and self.distance(op["cur_hex"], closest_city["coord"]) <= 2]
-    #     if not destination :                    # 如果没有行进规划 待安排的情况  
-    #         if len(city_ene) > 0:
-    #             flag_ene_is_around_city = True
-    #         closest_enemy , min_dis = self.get_bop_closest(bop, self.defend_enemy_info())
-    #         if min_dis < 3: # 避免同格交战
-    #             #找自身范围为2的游击点  但得和对方算子拉开距离
-    #              youji_point_candidates = self.defend_get_key_point_around_fort(\
-    #              bop["cur_hex"],
-    #              mode = "youji"
-    #             )
-    #              youji_point_candidates = self.defend_filter_key_point_by_scope(youji_point_candidates)
-    #              youji_point_candidates = [p for p in youji_point_candidates if self.distance(p, closest_enemy["cur_hex"]) >= min_dis]
-    #              youji_point_candidates.sort(key = lambda p : self.map.basic[p // 100][p % 100]["elev"] , reverse= True)
-    #              destination = youji_point_candidates                
-    #         elif min_dis >= 3:   #  查看是否在cd中
-    #             # 检查是否满足条件
-    #             destination = self.defend_chariot_find_best_cover_points(
-    #                         closest_city["coord"], 4, 7
-    #                     )
-    #             if bop["cur_hex"] in destination:
-    #                 destination = None
-                
-    #         #     #if              #  查看其它夺控点是否需要增援 根据情况调整自己位置
-    #         #     pass
-    #     if destination is not None:
-    #         self._move_action(obj_id, destination[0]) 
-    #         # 这个地方报错了  出现destination 是 int
-            
-    #     if bop["weapon_cool_time"] == 0:
-    #         self.__handle_open_fire(obj_id)
     
     #@szh0404  reset 占领点状态
     def reset_occupy_state(self):

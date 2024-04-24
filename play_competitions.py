@@ -4,8 +4,8 @@ from datetime import datetime
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from train_env import CrossFireEnv, DefendEnv, ScoutEnv
-import sys
-from ai.agent_demo import Agent
+
+from ai.agent import Agent
 
 RED, BLUE, WHITE = 0, 1, -1
 
@@ -68,8 +68,8 @@ def save_replay(replay_name, trajectories):
 
 def main():
     # rollout(track_id=1)
-    # rollout(track_id=2)
-    rollout(track_id=3)
+    rollout(track_id=2)
+    # rollout(track_id=3)
 
 
 if __name__ == "__main__":
