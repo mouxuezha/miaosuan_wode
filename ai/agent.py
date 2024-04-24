@@ -170,20 +170,70 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     
     def group_A2(self,units,units_VIP):
         # 这个以低成本实现一个跟随的。units跟随units_VIP里面距离最近的一个，跟随的逻辑是直接瞄着其当前位置就去了。
+        # 改一下，不要最近的一个，要个随机的。“这几个和这几个周围，威胁没到一定程度的点中间，随机几个”
+        if len(units_VIP)==0:
+            # 那就是被跟随的已经被杀完了，那就无所谓了
+            # 这样的话会导致绕路机制无效化，其实也是有问题的，但是先不管了
+            for unit in units:
+                self.set_move_and_attack(unit,self.target_pos,model="force")        
+        # 先取一下“周围的威胁较少的点“
+        pos_around_set = set()
+        distance_start = 0
+        distance_end = 1 
+        for unit in units_VIP:
+            pos_single = self.get_bop(unit)
+            pos_single_set = self.map.get_grid_distance(pos_single, distance_start, distance_end)
+            pos_around_set = pos_around_set | pos_single_set
+        
+        # 然后读人工势场，来搞个排序。然后再筛
+        pos_around_list = list(pos_around_set)
+        geshu = len(pos_around_list)
+        neighbor_field_array = np.zeros((geshu,2))
+        for neighbor_pos_single in pos_around_list:
+            neighbor_field_single = self.threaten_field[neighbor_pos_single]
+            neighbor_field_array[i,0] = neighbor_pos_single
+            neighbor_field_array[i,1] = neighbor_field_single
+        neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
+        neighbor_pos_list_selected = neighbor_field_array_sorted[:,0]
+        neighbor_field_list_selected = neighbor_field_array_sorted[:,1]
+        neighbor_pos_list_selected = neighbor_pos_list_selected.astype(int)
+        # using np.int64 would cause trouble.
+        neighbor_pos_list_selected = neighbor_pos_list_selected.tolist()         
+        a1 =10 
+        # 然后根据威胁情况看后面往哪里去。
+        pos_selected_list = [] 
+        for i in range(geshu-3):
+            if neighbor_field_list_selected[geshu - 1- i] <a1:
+                pos_selected_list = neighbor_pos_list_selected[0:geshu - 1- i]
+                break
+        if len(pos_selected_list) == 0 :
+            # 没有合适的，连三个都没有
+            pos_selected_list =  neighbor_pos_list_selected[0:3]
+        
+        # 好，然后开始随机分配了。
+        geshu_selected = len(pos_selected_list)
         for unit in units:
-            if len(units_VIP)==0:
-                # 那就是被跟随的已经被杀完了，那就无所谓了
-                self.set_move_and_attack(unit,self.target_pos,model="force")
-            else:
-                # 找那一堆里面距离最近的来跟随。
-                jvli_list = [] 
-                for i in range(len(units_VIP)):
-                    jvli_single = self.distance(unit,units_VIP[i])  
-                    jvli_list.append(jvli_single)
-                jvli_min = min(jvli_list)
-                index_min = jvli_list.index(jvli_min)
-                VIP_pos_single = units_VIP[index_min]["cur_hex"]
-                self.set_move_and_attack(unit,VIP_pos_single,model="force")
+            # 来个随机的index
+            index_selected = random.randint(0,geshu_selected)
+            self.set_move_and_attack(unit,index_selected,model="force")
+                    
+
+        # for unit in units:
+        #     if len(units_VIP)==0:
+        #         # 那就是被跟随的已经被杀完了，那就无所谓了
+        #         # 这样的话会导致绕路机制无效化，其实也是有问题的，但是先不管了
+        #         self.set_move_and_attack(unit,self.target_pos,model="force")
+        #     else:
+        #         # 找那一堆里面距离最近的来跟随。
+        #         jvli_list = [] 
+        #         for i in range(len(units_VIP)):
+        #             jvli_single = self.distance(unit,units_VIP[i])  
+        #             jvli_list.append(jvli_single)
+        #         jvli_min = min(jvli_list)
+        #         index_min = jvli_list.index(jvli_min)
+        #         VIP_pos_single = units_VIP[index_min]["cur_hex"]
+        #         self.set_move_and_attack(unit,VIP_pos_single,model="force")
+                
 
     def get_pos_list_A(self, units, target_pos):
         # 上来先维护target_pos_list,包括判断威胁等级看是不是有必要绕路。
