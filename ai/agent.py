@@ -619,8 +619,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 无人机8秒一格，车20秒一格，夹角66度的时候，投影出来速度是一样的，sin(66.42)=0.9165
         
         L_xy = np.linalg.norm(vector_xy)
-        n_zhuanzhe = 5 # 这个看情况改改。本来可以做个动态的，但是好像也没有什么必要
-        L_depart  = L_xy / n_zhuanzhe
+        n_zhuanzhe = 4 # 这个看情况改改。本来可以做个动态的，但是好像也没有什么必要
+        L_depart  = L_xy / n_zhuanzhe * 1.5
         vector_xy_normal = vector_xy / L_xy 
 
         # 求两个垂直于路径的法向量。
