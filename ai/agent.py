@@ -742,7 +742,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             if "abstract_state" in abstract_state_single:
                 if abstract_state_single["abstract_state"] == "jieju":
                     flag_finished and False
-                if abstract_state_single["abstract_state"] == "jieju":
+                if abstract_state_single["abstract_state"] == "move_and_attack":
                     if "flag_jieju" in abstract_state_single:
                         flag_finished and False
                 pass
