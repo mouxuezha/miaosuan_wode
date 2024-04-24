@@ -1583,7 +1583,13 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     @time_decorator
     def defend_shrink_by_power(self):
         our_ops = self.get_defend_tank_units() + self.get_defend_infantry_units()+ self.get_defend_armorcar_units()
+        ene_ops_in_obs = [op["obj_id"] for op in self.observation["operators"] if op["color"]!=self.color]
         ene_ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        for obid , v in self.filtered_enemyinfo.items():
+            info2_index = (v.rear - 1  +  v.maxsize ) % v.maxsize
+            top_record = v._get_item_by_index(info2_index)
+            if obid not in ene_ops_in_obs:
+                ene_ops.append(top_record)
         our_power = self.defend_calculate_power(self.color, our_ops)
         enemy_power = self.defend_calculate_power(~self.color,ene_ops)
         if enemy_power >= int(2 * our_power):
@@ -1594,7 +1600,13 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     @time_decorator
     def defend_attack_by_power(self):
         our_ops = self.get_defend_tank_units() + self.get_defend_infantry_units()+ self.get_defend_armorcar_units()
+        ene_ops_in_obs = [op["obj_id"] for op in self.observation["operators"] if op["color"]!=self.color]
         ene_ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        for obid , v in self.filtered_enemyinfo.items():
+            info2_index = (v.rear - 1  +  v.maxsize ) % v.maxsize
+            top_record = v._get_item_by_index(info2_index)
+            if obid not in ene_ops_in_obs:
+                ene_ops.append(top_record)   
         our_power = self.defend_calculate_power(self.color, our_ops)
         enemy_power = self.defend_calculate_power(~self.color, ene_ops)
         if enemy_power < int(0.5* our_power):
@@ -1658,7 +1670,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     ene = [op for op in self.observation["operators"] if op["color"] != self.color and op["cur_hex"] in closest_ene_city_nbs]
                     if len(ene) == 0:
                         self.ops_destination[ chariot["obj_id"] ].insert(0, closest_ene_city)
-                self.ops_destination[ chariot["obj_id"] ].append(cloest_infan["cur_hex"] )
+                self.ops_destination[ chariot["obj_id"] ].append( cloest_infan["cur_hex"] )
                 self._move_action(chariot["obj_id"], self.ops_destination[ chariot["obj_id"]][0])
                 if chariot["cur_hex"] == cloest_infan["cur_hex"]:
                     self.gen_change_state(chariot["obj_id"], 0)
@@ -2382,7 +2394,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     #         self.__handle_open_fire(obj_id)
     
     #@szh0404  reset 占领点状态
-    @time_decorator
     def reset_occupy_state(self):
         cities = [ci for ci in self.observation["cities"] ]
         ourunits = self.get_defend_armorcar_units() + self.get_defend_infantry_units() + self.get_defend_tank_units()
@@ -2459,7 +2470,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             return
         if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
             self.gen_occupy(obj_id)
-        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) > 3: #附近有敌方算子 而且很多  溜了溜了
+        
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) >= 3: #附近有敌方算子 而且很多  溜了溜了
             destination = self.defend_chariot_find_best_cover_points(bop["cur_hex"], 3, 5)
             self.ops_destination[obj_id]  = [ destination[0] ]
             self._move_action(obj_id, self.ops_destination[obj_id][0])
