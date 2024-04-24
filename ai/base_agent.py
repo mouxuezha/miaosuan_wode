@@ -1392,7 +1392,8 @@ class BaseAgent(ABC):
                 if jvli>2:
                     field_value = field_value + 0 
                 else:
-                    field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
+                    # field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
+                    field_value =field_value + +1*a1*0.2 / (a2 + 1 + jvli)
 
         #  using tongshi to modify the field further.
         # 如果已经算过了，就别重新算一遍这个了。
