@@ -320,7 +320,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     # 那就是已经快到了，那就得限制一下绕路的距离
                     len_raolu = round(xy_center_distance)
                 else:
-                    len_raolu = 18 
+                    len_raolu = 15 
 
                 try:
                     xy_candidate = xy_center + len_raolu*n_xy_list[0]
@@ -347,7 +347,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                         # 那就是已经快到了，那就得限制一下绕路的距离
                         len_raolu = round(xy_center_distance)
                     else:
-                        len_raolu = 18 
+                        len_raolu = 15 
 
                     try:
                         xy_candidate = enemy_xy + len_raolu*n1_xy
@@ -459,8 +459,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         jvli = self.distance(pos_ave, self.target_pos)
 
         # if there is no more time, then just chong.
-        time_assume = round(jvli * 20 * 1.5)
-        # time_assume = -114514
+        time_assume = round(jvli * 20 * 1.7)
+        # time_assume = 1114514
         if time_assume > (self.end_time - self.num):
             # then just chong, without using naozi
             for unit in units:
