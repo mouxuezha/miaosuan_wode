@@ -175,7 +175,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 那就是被跟随的已经被杀完了，那就无所谓了
             # 这样的话会导致绕路机制无效化，其实也是有问题的，但是先不管了
             for unit in units:
-                self.set_move_and_attack(unit,self.target_pos,model="force")        
+                self.set_move_and_attack(unit,self.target_pos,model="force")   
+            return      
         # 先取一下“周围的威胁较少的点“
         pos_around_set = set()
         distance_start = 0
@@ -215,8 +216,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         geshu_selected = len(pos_selected_list)
         for unit in units:
             # 来个随机的index
-            index_selected = random.randint(0,geshu_selected)
-            self.set_move_and_attack(unit,index_selected,model="force")
+            index_selected = random.randint(0,geshu_selected-1)
+            self.set_move_and_attack(unit,pos_selected_list[index_selected],model="force")
                     
 
         # for unit in units:

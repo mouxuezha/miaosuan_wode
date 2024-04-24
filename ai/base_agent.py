@@ -688,8 +688,8 @@ class BaseAgent(ABC):
         # then merge 
         qianpai_units = xiaoche_units + IFV_units_empty
 
-        # if len(qianpai_units)==0:
-        #     qianpai_units = IFV_units
+        if len(qianpai_units)==0:
+            qianpai_units = IFV_units
         return qianpai_units
 
     def filter_arrived_units(self,units):
