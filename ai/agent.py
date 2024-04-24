@@ -459,7 +459,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         jvli = self.distance(pos_ave, self.target_pos)
 
         # if there is no more time, then just chong.
-        time_assume = round(jvli * 20 * 1.1)
+        time_assume = round(jvli * 20 * 1.5)
         # time_assume = -114514
         if time_assume > (self.end_time - self.num):
             # then just chong, without using naozi
@@ -553,7 +553,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 # 那说明是都到了，那就没必要再飞来飞去了
                 return
             
-            pos_around_list = list(self.map.get_grid_distance(pos_center,3,5))
+            
             # 这个逻辑得升级一下，近距离效果不好，得整个飞来飞去的。随机到前面一定角度内的某个地方，恐怕是比较好的。
             pos_ave_xy = self._hex_to_xy(pos_ave)
             target_xy = self._hex_to_xy(target_pos)
@@ -563,15 +563,16 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 然后搞个坐标转换矩阵
             A = np.array([[np.cos(rad_random), np.sin(rad_random) ], [-np.sin(rad_random), np.cos(rad_random)]])
             # 然后旋转个坐标,缩放个长度
-            vector_xy_rotate = A * vector_xy.reshape(2,1)
+            vector_xy_rotate =np.matmul(A,vector_xy.reshape(2,1)) 
             vector_xy_rotate = vector_xy_rotate / np.linalg.norm(vector_xy_rotate) * 7 
             # 然后把预定的目标点拿出来
-            target_xy_random =  vector_xy_rotate + pos_ave
+            target_xy_random =  vector_xy_rotate.reshape(2,) + pos_ave_xy
             try:
                 target_pos_random = self._xy_to_hex(target_xy_random)
             except:
                 target_pos_random = target_pos
-
+            
+            # pos_around_list = list(self.map.get_grid_distance(pos_center,3,5))
             # target_pos_random = pos_around_list[random.randint(0,len(pos_around_list)-1)]
             # if target_pos_random == -1:
             #     target_pos_random = pos_center
