@@ -46,7 +46,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.prepare_to_occupy  = {}
         self.enemy_info = {}  #用来记敌方位置信息  需要记录对应的时刻 key = obj_id
         self.filtered_enemyinfo = {}
-        self.max_unseen_time = 200
+        self.max_unseen_time = 150
     def setup(self, setup_info):
         self.scenario = setup_info["scenario"]
         # self.get_scenario_info(setup_info["scenario"])
@@ -500,10 +500,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             except:
                 king_abstract_state = "none"
                 self.set_none(king_ID)
-            
-            # 原则上应该是，有同格的优先同格的，没有同格的就把别的地方的call过来。但是这样的话就要算距离然后根据距离排序了，不太好。
-            # 但是这个是锦上添花的，不是雪中送炭的，能提上限提不了下限，还要牺牲速度，因此先不慌。
-            # TODO
 
             if king_abstract_state == "juhe":
                 # this one has juheing.
@@ -515,9 +511,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     try:
                         knight_abstract_state = self.abstract_state[knight_ID]["abstract_state"]
                     except:
-                        # knight_abstract_state = "none"
-                        # self.set_none(knight_ID)
-                        self.set_move_and_attack(knight_ID,self.target_pos,model="force")
+                        knight_abstract_state = "none"
+                        self.set_none(knight_ID)
  
                     if (knight_abstract_state == "move_and_attack" and "next" in self.abstract_state[knight_ID]) or knight_abstract_state == "juhe" or (knight_ID==king_ID):
                         # this knight has his lord.
@@ -900,7 +895,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.chariot_stage = {op['obj_id']: "" for op in self.observation["operators"] if op["sub_type"] == BopSubType.Chariot}
         self.tank_stage =  {op['obj_id']: "" for op in self.observation["operators"] if op["sub_type"] == BopSubType.Tank}
         ops = self.get_defend_armorcar_units() + self.get_defend_infantry_units() + self.get_defend_tank_units()
-        self.ops_destination = {op['obj_id']: "" for op in ops if op["color"] == self.color}
+        self.ops_destination = {op['obj_id']: [] for op in ops if op["color"] == self.color}
         self.prepare_to_occupy = {op['coord']: [] for op in self.observation["cities"]}
         
 
@@ -1165,15 +1160,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         if (self.num % 100==1) and (self.num>-200) and (self.num<1100):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.这里面是带骑脸目标、停车、引导打击等逻辑的，但是好像不是太适合现在这个场景。
-            # self.UAV_patrol(target_pos)
-            self.UAV_patrol3(target_pos)
+            self.UAV_patrol(target_pos)
             
             # kaibai is fine.逃避可耻但有用
             # self.group_A(UAV_units,target_pos)
 
             # 抢救一下，无人机给一些新的说法
             # self.UAV_patrol2(self.unscouted)
-        elif self.num>1100:
+        else:
             self.group_A(UAV_units,target_pos)
         return 
 
@@ -1238,7 +1232,6 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         tanks =    [op for op in self.observation["operators"] if op["sub_type"]==BopSubType.Tank and op["color"] == self.color]
         ops = self.get_defend_infantry_units() + self.get_defend_armorcar_units() + self.get_defend_tank_units()
         ops_dests = [op for op in ops if op["color"] == self.color]
-        
         for op in chariots:
             if op["obj_id"] not in self.chariot_stage.keys():
                 self.chariot_stage[ op["obj_id"] ] =""    # 对应可能是新解聚的情况
@@ -1254,7 +1247,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 # self._defend_jieju_and_move( op["obj_id"] )
         for op in ops_dests:
             if op["obj_id"] not in self.ops_destination.keys():
-                self.ops_destination[ op["obj_id"]]  = ""
+                # self.ops_destination[ op["obj_id"]]  = ""
+                self.ops_destination[ op["obj_id"]]  = []
         self.reset_occupy_state()                         # 重新看有没有空点
         self.update_prepare_to_occupy()
         self.update_enemyinfo()
@@ -1266,9 +1260,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                         self.observation["cities"],
                         key=lambda city: self.distance(troop["cur_hex"], city["coord"]),
                     )
-                    self.ops_destination[ troop["cur_hex"] ]  =  closest_city["coord"]
+                    self.ops_destination[ troop["cur_hex"] ]  =  [closest_city["coord"]]
                 self.defend_BT_Troop(troop["obj_id"])
-            if self.num >= 90 and len(self.filtered_enemyinfo) > 0: # 先去占点
+            if self.num >= 90 and len(self.filtered_enemyinfo) > 0: 
                 if self.defend_shrink_by_power():
                     if self.defend_let_our_power_shrink_to_city():
                         return 
@@ -1292,7 +1286,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             )
             if u["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
                 self.gen_occupy(u["obj_id"])
-            if self.distance(u["cur_hex"], closest_city["coord"]) != 0:
+            if self.distance(u["cur_hex"], closest_city["coord"]) >= 2:
                 self._move_action(u["obj_id"], closest_city["coord"])
             else:
                 self.__tank_handle_open_fire(u["obj_id"])
@@ -1601,12 +1595,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
              )
             if bop_troop["cur_hex"] == closest_city["coord"]:
                     self.gen_occupy(obj_id)
-            self.ops_destination["obj_id"] =  closest_city["coord"]
+            self.ops_destination["obj_id"] =  [closest_city["coord"]]
             if self.num <=120:
                 if self.color != closest_city["flag"] :
-                    self.ops_destination[obj_id] = closest_city["coord"]
+                    self.ops_destination[obj_id] = [closest_city["coord"]]
                     self.gen_change_state(obj_id, 2)
-                    self._move_action( obj_id,  self.ops_destination[obj_id] )
+                    self._move_action( obj_id,  self.ops_destination[obj_id][0] )
                     return
             #     # if self.color == closest_city["flag"] and bop_troop["cur_hex"] == closest_city["coord"] and self.troop_stage[obj_id] == "":
             #     #     self.gen_change_state(obj_id, 0)
@@ -1750,18 +1744,24 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             ops = candidates
             for op in ops:
                 if op["sub_type"] ==  BopSubType.Infantry:
-                    power_ += EnemyValue.Infantry**op["blood"]
+                    power_ += EnemyValue.Infantry*op["blood"]
                 elif op["sub_type"] == BopSubType.Tank:
-                    power_ += EnemyValue.Tank**op["blood"]
+                    power_ += EnemyValue.Tank*op["blood"]
                 elif op["sub_type"] == BopSubType.Chariot:
-                    power_ += EnemyValue.Chariot**op["blood"]
+                    power_ += EnemyValue.Chariot*op["blood"]
         return power_
 
     #@szh 0417 写一个收缩战略  观察到敌我力量悬殊 收缩到一个点
     @time_decorator
     def defend_shrink_by_power(self):
         our_ops = self.get_defend_tank_units() + self.get_defend_infantry_units()+ self.get_defend_armorcar_units()
+        ene_ops_in_obs = [op["obj_id"] for op in self.observation["operators"] if op["color"]!=self.color]
         ene_ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        for obid , v in self.filtered_enemyinfo.items():
+            info2_index = (v.rear - 1  +  v.maxsize ) % v.maxsize
+            top_record = v._get_item_by_index(info2_index)
+            if obid not in ene_ops_in_obs:
+                ene_ops.append(top_record)
         our_power = self.defend_calculate_power(self.color, our_ops)
         enemy_power = self.defend_calculate_power(~self.color,ene_ops)
         if enemy_power >= int(2 * our_power):
@@ -1772,7 +1772,13 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     @time_decorator
     def defend_attack_by_power(self):
         our_ops = self.get_defend_tank_units() + self.get_defend_infantry_units()+ self.get_defend_armorcar_units()
+        ene_ops_in_obs = [op["obj_id"] for op in self.observation["operators"] if op["color"]!=self.color]
         ene_ops = [op for op in self.observation["operators"] if op["color"]!=self.color]
+        for obid , v in self.filtered_enemyinfo.items():
+            info2_index = (v.rear - 1  +  v.maxsize ) % v.maxsize
+            top_record = v._get_item_by_index(info2_index)
+            if obid not in ene_ops_in_obs:
+                ene_ops.append(top_record)   
         our_power = self.defend_calculate_power(self.color, our_ops)
         enemy_power = self.defend_calculate_power(~self.color, ene_ops)
         if enemy_power < int(0.5* our_power):
@@ -1790,26 +1796,56 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         our_infan  = self.get_defend_infantry_units()
         our_chariot = self.get_defend_armorcar_units()
         flag_has_infantry_to_occ = False
-        
+        city_pos = [c["coord"] for c in self.observation["cities"]]
+        cities = [c for c in self.observation["cities"]]
+        ene_city_pos = [c["coord"] for c in cities if c["flag"] != self.color]  # List[int]
         if len(our_infan) > 0:
             # 直接跟步兵班那里
             # 选距离最近的步兵班
             for tank in our_tanks:
                 self.__tank_handle_open_fire(tank["obj_id"])
+                if self.ops_destination[tank["obj_id"]] != [] and tank["cur_hex"] == self.ops_destination[tank["obj_id"]][0]:
+                    self.ops_destination[ tank["obj_id"] ].pop(0)
                 cloest_infan = min(
                     our_infan,
                     key = lambda infan : self.distance( infan["cur_hex"], tank["cur_hex"])
                 )
-                self.ops_destination[ tank["obj_id"] ] = cloest_infan["cur_hex"]
-                self._move_action(tank["obj_id"] , self.ops_destination[ tank["obj_id"] ] )
+                if tank["cur_hex"] in city_pos:
+                    self.gen_occupy(tank["obj_id"])
+                if len(ene_city_pos):
+                    closest_ene_city = min(
+                        ene_city_pos, key = lambda enec : self.distance(enec , tank["cur_hex"])
+                    )
+                    closest_ene_city_nbs = self.map.get_neighbors(closest_ene_city) + [ closest_ene_city ]
+                    ene = [op for op in self.observation["operators"] if op["color"] != self.color and op["cur_hex"] in closest_ene_city_nbs]
+                    if len(ene) == 0:
+                        self.ops_destination[ tank["obj_id"] ].insert(0, closest_ene_city)
+                        
+                     
+                self.ops_destination[ tank["obj_id"] ].append(cloest_infan["cur_hex"])
+                self._move_action(tank["obj_id"] , self.ops_destination[ tank["obj_id"] ][0] )
+                if tank["cur_hex"] == cloest_infan["cur_hex"]:
+                    self.gen_change_state(tank["obj_id"], 0)
+                    
             for chariot in our_chariot:
                 cloest_infan = min(
                     our_infan,
                     key = lambda infan : self.distance( infan["cur_hex"], chariot["cur_hex"])
                 )
-                self.ops_destination[ chariot["obj_id"] ] = cloest_infan["cur_hex"]
-                self._move_action(chariot["obj_id"], self.ops_destination[ chariot["obj_id"]])
+                if chariot["cur_hex"] in city_pos:
+                    self.gen_occupy(chariot["obj_id"])  # 能占点把点站上
+                if len(ene_city_pos):
+                    closest_ene_city = min(
+                        ene_city_pos, key = lambda enec : self.distance(enec , chariot["cur_hex"])
+                    )
+                    closest_ene_city_nbs = self.map.get_neighbors(closest_ene_city) + [ closest_ene_city ]
+                    ene = [op for op in self.observation["operators"] if op["color"] != self.color and op["cur_hex"] in closest_ene_city_nbs]
+                    if len(ene) == 0:
+                        self.ops_destination[ chariot["obj_id"] ].insert(0, closest_ene_city)
+                self.ops_destination[ chariot["obj_id"] ].append( cloest_infan["cur_hex"] )
+                self._move_action(chariot["obj_id"], self.ops_destination[ chariot["obj_id"]][0])
                 if chariot["cur_hex"] == cloest_infan["cur_hex"]:
+                    self.gen_change_state(chariot["obj_id"], 0)
                     self.__handle_open_fire(chariot["obj_id"])
             flag_has_infantry_to_occ = True
                 
@@ -1828,7 +1864,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         our_chariot = self.get_defend_armorcar_units()
         scities = [c for c in self.observation["cities"]]
         ene_cities = [c for c in scities if c["flag"] != self.color]
-       
+        ene_cities_pos = [c["coord"] for c in ene_cities]
         if len(ene_cities) == 0:
             return False  
         # 估计敌人方位
@@ -1854,16 +1890,19 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 ene_city_candidates = self.map.get_neighbors(min_ene_city_pos) + [min_ene_city_pos]
                 tar_pos = random.choice(ene_city_candidates)
                 # 找敌人离的最近的城市 六格随机游走
-                if tank["speed"] == 0 or self.ops_destination[ tank["obj_id"] ] == "":
-                    self.ops_destination[ tank["obj_id"] ] = tar_pos
-                    self._move_action(tank["obj_id"] , self.ops_destination[ tank["obj_id"] ] )
-        
+                if tank["speed"] == 0 or self.ops_destination[ tank["obj_id"] ] == []:
+                    self.ops_destination[ tank["obj_id"] ] = [tar_pos]
+                    self._move_action(tank["obj_id"] , self.ops_destination[ tank["obj_id"] ][0] )
+                if tank["cur_hex"] in ene_cities_pos:
+                    self.gen_occupy(tank["obj_id"])
             for chariot in our_chariot:
                 # 找能尽可能覆盖这个点的位置
                 nbs = self.map.get_neighbors(chariot["cur_hex"]) + [chariot["cur_hex"]]
                 tars = self.map.get_neighbors(min_ene_city_pos) + [min_ene_city_pos]
                 max_can_see = 0
                 best_point_can_see = None
+                if chariot["cur_hex"] in ene_cities_pos:
+                    self.gen_occupy(chariot["obj_id"])    # 能占点就占点
                 for nb in nbs:
                     total_can_see = 0
                     for tp in tars:
@@ -1873,11 +1912,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                         max_can_see = total_can_see
                         best_point_can_see = nb
                 if best_point_can_see is not None:
-                    if chariot["speed"] == 0 or self.ops_destination[ chariot["obj_id"] ] == "":
-                        self.ops_destination[ chariot["obj_id"] ] = best_point_can_see
-                        self._move_action(chariot["obj_id"] , self.ops_destination[ chariot["obj_id"] ] )
+                    if chariot["speed"] == 0 or self.ops_destination[ chariot["obj_id"] ] == []:
+                        self.ops_destination[ chariot["obj_id"] ] = [best_point_can_see]
+                        self._move_action(chariot["obj_id"] , self.ops_destination[ chariot["obj_id"] ][0] )
                     if chariot["cur_hex"] == best_point_can_see:
                         self.__handle_open_fire(chariot["obj_id"])
+                    
             return True
 
                     
@@ -1913,14 +1953,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         bop = self.get_bop(obj_id)  
         if bop["speed"] != 0:  # 有未完成的机动
             return
-        if self.ops_destination[obj_id] == bop["cur_hex"]:
-            self.ops_destination[obj_id] = ""
+        if len(self.ops_destination[obj_id]) != 0 and self.ops_destination[obj_id][0] == bop["cur_hex"]:
+            self.ops_destination[obj_id].pop(0)
         # self.__handle_open_fire(obj_id)           # 先开火打一发
-        if self.ops_destination[obj_id] != "" and bop["cur_hex"] ==  self.ops_destination[obj_id]:
+        if self.ops_destination[obj_id] != [] and bop["cur_hex"] ==  self.ops_destination[obj_id][0]:
             self.chariot_stage[obj_id] = "fire"
             return  
-        if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
-            self._move_action(obj_id, self.ops_destination[obj_id])
+        if self.ops_destination[obj_id] != [] and bop["cur_hex"] != self.ops_destination[obj_id][0]:
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
             return
         # 原则上来说一定有closest
         if bop["cur_hex"]  in  [c["coord"] for c in self.observation["cities"]]:
@@ -1930,8 +1970,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             key=lambda city: self.distance(bop["cur_hex"], city["coord"])
         )
         if closest_city["flag"] != self.color: # 先占点
-            self.ops_destination[obj_id] = closest_city["coord"]
-            self._move_action(obj_id, self.ops_destination[obj_id])
+            self.ops_destination[obj_id] = [closest_city["coord"]]
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
             if bop["cur_hex"] == closest_city["coord"]:
                 self.gen_occupy(obj_id)
         # 判断是否为机动算子
@@ -1952,7 +1992,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # if len(tar) > 0:
         #     self._move_action(obj_id, tar[0])
         #     return
-        if bop["speed"] == 0 or self.ops_destination[obj_id] == "":  #
+        if bop["speed"] == 0 or self.ops_destination[obj_id] == []:  #
             # 判断和敌方单位距离
             pts_candidates = self.map.get_grid_distance(\
                 bop["cur_hex"], 2, 4
@@ -1968,7 +2008,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 ))
             target_pos = random.choice(pts_candidates)
             self._move_action(obj_id, target_pos)
-            self.ops_destination[obj_id] = target_pos
+            self.ops_destination[obj_id] = [target_pos]
             self.chariot_stage[obj_id] =  "fire"
         
         if len(our_troop_in_neighbor) > 0:       #  附近有步兵班转为机动算子
@@ -1990,7 +2030,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     else: # 进点
                         destination = [city["coord"]]
                         flag_move_to_another_city = True 
-                    self.ops_destination[obj_id] = destination[0]
+                    self.ops_destination[obj_id] = [destination[0]]
                     self._move_action(obj_id, destination[0])
                     break
             if flag_move_to_another_city:
@@ -1999,8 +2039,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
                 if len(destination) == 0:
                     return 
-                self.ops_destination[obj_id] = destination[0]
-                self._move_action(obj_id, self.ops_destination[obj_id])
+                self.ops_destination[obj_id] = [destination[0]]
+                self._move_action(obj_id, self.ops_destination[obj_id][0])
                 return 
         # 暂时还在守这个点
         else:
@@ -2021,8 +2061,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 else:
                     destination =  [ closest_city["coord"] ]
                     self.prepare_to_occupy[ closest_city["coord"]  ].append(obj_id)
-            self.ops_destination[obj_id] = destination[0]
-            self._move_action(obj_id, self.ops_destination[obj_id])
+            self.ops_destination[obj_id] = [destination[0]]
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
             self.chariot_stage[obj_id] = "fire"
             return 
         return 
@@ -2046,7 +2086,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         flag_close_city_nobody_oc = False
         if bop["cur_hex"] == closest_city["coord"] and self.color != closest_city["flag"]:
             self.gen_occupy(obj_id)
-        if self.ops_destination[obj_id] != "" and bop["cur_hex"] ==  self.ops_destination[obj_id]:
+        if self.ops_destination[obj_id] != [] and bop["cur_hex"] ==  self.ops_destination[obj_id][0]:
             self.tank_stage[obj_id] = "fire"
             return 
     
@@ -2067,7 +2107,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 准备夺控
             city_hex = closest_city["coord"]
             self.prepare_to_occupy[city_hex].append(obj_id)
-            self.ops_destination[obj_id] = closest_city["coord"]
+            self.ops_destination[obj_id] = [ closest_city["coord"] ]
             self._move_action(obj_id, closest_city["coord"])
             if bop["cur_hex"] == closest_city["coord"]:
                 self.gen_occupy(obj_id)            #执行夺控
@@ -2098,7 +2138,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     else: 
                         destination = [city["coord"]]
                         flag_move_to_another_city = True 
-                    self.ops_destination[obj_id] = destination[0]
+                    self.ops_destination[obj_id] = [destination[0]]
                     self._move_action(obj_id, destination[0])
                     break
             if flag_move_to_another_city:
@@ -2108,8 +2148,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 destination = self.defend_chariot_find_best_cover_points(city["coord"], 3, 5)
                 if len(destination) == 0:
                     return 
-                self.ops_destination[obj_id] = destination[0]
-                self._move_action(obj_id, self.ops_destination[obj_id])
+                self.ops_destination[obj_id] = [destination[0]]
+                self._move_action(obj_id, self.ops_destination[obj_id][0])
                 self.tank_stage[obj_id] = "fire"
                 return   
 
@@ -2161,7 +2201,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             if destination is None:
                 destination = [p for p in self.map.get_neighbors(bop["cur_hex"]) if self.distance(p, closest_enemy["cur_hex"]) > min_dis + 1]
             self._move_action(obj_id, destination[0])
-            self.ops_destination[obj_id] = destination[0]
+            self.ops_destination[obj_id] = [destination[0]]
             return destination
         else:
             return [] 
@@ -2181,20 +2221,20 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.__handle_open_fire(obj_id)           # 先开火打一发
         if bop["forking"]:
             return 
-        if self.ops_destination[obj_id] == bop["cur_hex"]:
-            self.ops_destination[obj_id] = ""
+        if len(self.ops_destination[obj_id]) != 0 and self.ops_destination[obj_id][0] == bop["cur_hex"]:
+            self.ops_destination[obj_id].pop(0)
         if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
             self.gen_occupy(obj_id) 
         # 放在fire stage
-        if self.ops_destination[obj_id] is not None and self.ops_destination[obj_id] != "":
-            if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
+        if self.ops_destination[obj_id] is not None and self.ops_destination[obj_id] != []:
+            if  bop["cur_hex"] != self.ops_destination[obj_id][0]:
                 self.gen_change_state(obj_id, 2)
-                self._move_action(obj_id, self.ops_destination[obj_id])
+                self._move_action(obj_id, self.ops_destination[obj_id][0])
                 return 
 
         # 这个条件判断需要再考虑考虑
-        if self.ops_destination[obj_id] is not None and bop["cur_hex"] == self.ops_destination[obj_id]:
-            if bop["cur_hex"] in [ nearby_hidding_fort["cur_hex"] ] and self.ops_destination[obj_id] ==  nearby_hidding_fort["cur_hex"]: 
+        if self.ops_destination[obj_id] != [] and bop["cur_hex"] == self.ops_destination[obj_id][0]:
+            if bop["cur_hex"] in [ nearby_hidding_fort["cur_hex"] ] and self.ops_destination[obj_id][0] ==  nearby_hidding_fort["cur_hex"]: 
                 hforts = [op for op in self.observation["operators"] if op["sub_type"]== 20]
                 destination = [o["obj_id"] for o in hforts if o["cur_hex"] == bop["cur_hex"] ]
                 self.gen_enter_fort(obj_id, destination[0])
@@ -2206,11 +2246,11 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.observation["cities"],
             key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
         )
-        self.ops_destination["obj_id"] =  closest_city["coord"]
+        self.ops_destination["obj_id"] =  [closest_city["coord"]]
         if self.color != closest_city["flag"]:
-            self.ops_destination[obj_id] = closest_city["coord"]
+            self.ops_destination[obj_id] = [closest_city["coord"]]
             self.gen_change_state(obj_id, 2)
-            self._move_action(obj_id,  self.ops_destination[obj_id] )
+            self._move_action(obj_id,  self.ops_destination[obj_id][0] )
             return
         # 找最近的隐蔽工事 
         #our_hidding_fort_list = self.get_hiddingbase_units()
@@ -2230,7 +2270,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         if nearby_hidding_fort is not None:
             if self.troop_stage[obj_id] == "prepare_to_enter_fort"  and len(self.fort_assignments[nearby_hidding_fort["obj_id"]]) == 0:      
                 self.gen_enter_fort(obj_id, nearby_hidding_fort["obj_id"]) 
-                self.ops_destination[obj_id] = nearby_hidding_fort["cur_hex"]
+                self.ops_destination[obj_id] = [ nearby_hidding_fort["cur_hex"] ]
                 if bop["cur_hex"] == nearby_hidding_fort["cur_hex"]: 
                     self.troop_stage[obj_id] = "fire"
                 flag_troop_prepare_enter_fort = True
@@ -2245,7 +2285,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     self.gen_change_state(obj_id, 1)
                 self._move_action(obj_id,destination)  # 反正先每帧发个冲锋指令 
                 self.troop_stage[obj_id] = "prepare_to_enter_fort"  
-                self.ops_destination[obj_id] = destination
+                self.ops_destination[obj_id] = [destination]
                 return
         # 这里增加支援其他夺控点
         if bop["in_fort"]:
@@ -2255,7 +2295,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             flag_city_in_control = True
             
         if flag_city_in_control ==  False:
-            self.ops_destination[obj_id] = closest_city["coord"]
+            self.ops_destination[obj_id] = [closest_city["coord"]]
             self._move_action(obj_id, closest_city["coord"])
             if closest_city["coord"] == bop["cur_hex"]:
                 self.gen_occupy(obj_id)
@@ -2265,7 +2305,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         ourtroop = self.get_defend_infantry_units()
         for t in ourtroop:
             nearby_hidding_fort_hex = nearby_hidding_fort["cur_hex"] if nearby_hidding_fort is not None else closest_city["coord"]
-            if self.ops_destination[t["obj_id"]] in [closest_city["coord"], nearby_hidding_fort_hex]:
+            if len(self.ops_destination[t["obj_id"]]) == 0:
+                continue
+            if self.ops_destination[t["obj_id"]][0] in [closest_city["coord"], nearby_hidding_fort_hex]:
                 flag_has_another_defend_unit += 1
         if flag_has_another_defend_unit > 1 :
             flag_can_support_another_city = True
@@ -2275,11 +2317,13 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     continue
                 cn = list(self.map.get_grid_distance(c["coord"], 0, 2)) 
                 for t in ourtroop:
-                    if self.ops_destination[ t["obj_id"] ] in cn:
+                    if len(self.ops_destination[ t["obj_id"] ]) == 0:
+                        continue
+                    if self.ops_destination[ t["obj_id"] ][0] in cn:
                          flag_c_need_support = False
                 if flag_c_need_support and self.distance(bop["cur_hex"], c["coord"]) <=4 :   #可去支援
                     if len(self.defend_count_current_pos_enemy(c["coord"], 2)) <= 2:    # 敌方太多就别去了
-                        self.ops_destination[obj_id] = c["coord"]
+                        self.ops_destination[obj_id] = [c["coord"]]
                         return 
                     
        
@@ -2287,7 +2331,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self._move_action(obj_id, destination[0])
         # 直接进点
         self._move_action(obj_id, closest_city["coord"])
-        self.ops_destination[obj_id] = closest_city["coord"]
+        self.ops_destination[obj_id] = [ closest_city["coord"] ]
         self.troop_stage[obj_id] = "fire"
         return 
     
@@ -2296,23 +2340,57 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     def defend_troop_fire_stage_zhandian(self, obj_id):
         destination = None
         bop = self.get_bop(obj_id)
-        if bop["weapon_cool_time"] == 0:
-            self.__handle_open_fire(obj_id)
+        
         closest_city = min(
             self.observation["cities"],
             key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
         )
-        if self.ops_destination[obj_id] == bop["cur_hex"]:
-            self.ops_destination[obj_id] = ""
-        if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
+        if len(self.ops_destination[obj_id]) != 0 and  self.ops_destination[obj_id][0] == bop["cur_hex"]:
+            self.ops_destination[obj_id].pop(0)
+        if self.ops_destination[obj_id] != [] and bop["cur_hex"] != self.ops_destination[obj_id][0]:
             self.gen_change_state(obj_id, 2)
-            self._move_action(obj_id, self.ops_destination[obj_id])
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
             return
+        
+        if bop["weapon_cool_time"] == 0:
+            self.__handle_open_fire(obj_id)
         if bop["cur_hex"] == closest_city["coord"]:
             self.gen_occupy(obj_id)
+        # 0423 步兵班火力支援方案 在周围没有对方算子的条件下步兵班 找夺控点周围七个格子中通视效果最好的 
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0:  
+            if len(self.defend_count_current_pos_enemy(bop["cur_hex"], 1)) == 0:
+                # 可以选择支援
+                has_ene_cities = [c for c in self.observation["cities"] if len(self.defend_count_current_pos_enemy(
+                    c["coord"], 1  #  考虑调整为1  或  2 
+                )) > 0]
+                if has_ene_cities is not None and len(has_ene_cities) > 0:
+                    closest_has_ene_city = min(
+                        has_ene_cities,
+                        key = lambda enec: self.distance(closest_city["coord"], enec["coord"])
+                    )
+                    if closest_has_ene_city is not None:
+                        #准备支援
+                        closest_ene_city_nbs  = self.map.get_neighbors( closest_has_ene_city["coord"]) + [ closest_has_ene_city["coord"] ]
+                        closest_city_nbs = self.map.get_neighbors(closest_city["coord"]) + [ closest_city["coord"] ]
+                        max_can_see = 0
+                        best_point_can_see = None  #  int 
+                        for nb in closest_city_nbs:
+                            total_can_see = 0
+                            for tp in closest_ene_city_nbs:
+                                if self.map.can_see(nb, tp, 0):
+                                    total_can_see += 1
+                            if total_can_see > max_can_see:
+                                max_can_see = total_can_see
+                                best_point_can_see = nb
+                        if best_point_can_see is not None:
+                            self.ops_destination[obj_id].insert(0, best_point_can_see)
+                            
+                
+             
+
         hforts = [op for op in self.observation["operators"] if op["sub_type"]== 20]
         hforts_hex = [op["cur_hex"] for op in self.observation["operators"] if op["sub_type"]== 20]
-        if bop["cur_hex"] in hforts_hex and self.ops_destination[obj_id] in hforts_hex:
+        if bop["cur_hex"] in hforts_hex and len( self.ops_destination[obj_id] ) and self.ops_destination[obj_id][0] in hforts_hex:
             destination = [o["obj_id"] for o in hforts if o["cur_hex"] == bop["cur_hex"] ]
             self.gen_enter_fort(obj_id, destination[0])
     #@szh 0404  更新prepare _to  _occupy 的内容
@@ -2323,7 +2401,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         for k, v in self.prepare_to_occupy.items():   # K:coord  v list of obj_id
             v = list(set(v))
             for i in range(len(v)):  # v_i obj_id
-                if self.ops_destination[ v[i] ] != k:
+                if self.ops_destination[ v[i] ][0] != k:
                     v.pop(i)          
 
     def get_bop_closest(self, bop, refer_bops: list):
@@ -2364,22 +2442,25 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         )
         # if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
         #     self.__handle_open_fire(obj_id)
-        if self.ops_destination[obj_id] != "" and  bop["cur_hex"] != self.ops_destination[obj_id]:
-            self._move_action(obj_id, self.ops_destination[obj_id])
+        if len(self.ops_destination[obj_id]) != 0 and  self.ops_destination[obj_id][0] == bop["cur_hex"]:
+            self.ops_destination[obj_id].pop(0)
+
+        if self.ops_destination[obj_id] != [] and  bop["cur_hex"] != self.ops_destination[obj_id][0]:
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
             return
 
         if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
             self.gen_occupy(obj_id)
             if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) >= 3: #附近有敌方算子 而且很多  溜了溜了
                 destination = self.defend_chariot_find_best_cover_points(bop["cur_hex"], 4, 6)
-                self.ops_destination[obj_id]  = destination[0]
-                self._move_action(obj_id, self.ops_destination[obj_id])
+                self.ops_destination[obj_id].insert(0,destination[0])
+                self._move_action( obj_id, self.ops_destination[obj_id][0] )
                 return 
         tar = self.defend_check_nearby_enemy(obj_id)
         if len(tar) > 0:
             self._move_action(obj_id, tar[0])
             return
-        if bop["speed"] == 0  or self.ops_destination[obj_id] == "":  #
+        if bop["speed"] == 0  or self.ops_destination[obj_id] == []:  #
             # 判断和敌方单位距离
             pts_candidates = self.map.get_grid_distance(\
                 bop["cur_hex"], 2, 4
@@ -2395,14 +2476,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 ))
             target_pos = random.choice(pts_candidates)
             self._move_action(obj_id, target_pos)
-            self.ops_destination[obj_id] = target_pos
+            self.ops_destination[obj_id] = [target_pos]
 
         # 可以覆盖上边的
         city_empty = self.defend_check_city_no_hex()
         if self.distance(bop["cur_hex"], closest_city["coord"]) >= 5 and len(city_empty) > 0:
             city_empty.sort(key = lambda c: self.distance(c["coord"], bop["cur_hex"]))
-            self.ops_destination[obj_id] = city_empty[0]["coord"]
-            self._move_action(obj_id, self.ops_destination[obj_id])   
+            self.ops_destination[obj_id] = [ city_empty[0]["coord"] ]
+            self._move_action(obj_id, self.ops_destination[obj_id][0])   
             return  
         else:
             scities = [c for c in self.observation["cities"]]
@@ -2413,8 +2494,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             third_near_ene = [op for op in self.observation["operators"] if op["color"]!=self.color \
                         and self.map.get_distance(op["cur_hex"], third_near_city["coord"]) <= 2]
             if len(second_near_ene) == 0 and len(third_near_ene) != 0:
-                self.ops_destination[obj_id] = second_near_city["coord"]
-                self._move_action(obj_id, self.ops_destination[obj_id])
+                self.ops_destination[obj_id] = [ second_near_city["coord"] ]
+                self._move_action(obj_id, self.ops_destination[obj_id][0])
                 return  
 
         closest_enemy , min_dis = self.get_bop_closest(bop, self.defend_enemy_info())
@@ -2430,8 +2511,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     destination = [random.choice(youji_point_candidates)]
                 if type(destination) == int:
                     destination = [destination]
-                self.ops_destination[obj_id]  = destination[0]
-                self._move_action(obj_id, self.ops_destination[obj_id])  
+                self.ops_destination[obj_id]  = [destination[0]]
+                self._move_action(obj_id, self.ops_destination[obj_id][0])  
                 return  
            
         if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0 and self.color != closest_city["flag"]:
@@ -2452,7 +2533,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     continue
                 cn = list(self.map.get_grid_distance(c["coord"], 0, 2))  # 0-2 范围没有我方
                 for t in ourunits:
-                    if self.ops_destination[ t["obj_id"] ] in cn:
+                    if len(self.ops_destination[ t["obj_id"] ]) == 0:
+                        continue
+                    if self.ops_destination[ t["obj_id"] ][0] in cn:
                          flag_c_need_support = False
                 if flag_c_need_support and self.color != c["flag"] :   #可去支援
                     if len(self.defend_count_current_pos_enemy(c["coord"], 1)) == 0 and \
@@ -2462,62 +2545,13 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                         break
         if destination is None:
             destination = [closest_city["coord"]]            
-        self.ops_destination[obj_id] = destination[0]
-        self._move_action(obj_id, self.ops_destination[obj_id]) 
+        self.ops_destination[obj_id] = [destination[0]]
+        self._move_action(obj_id, self.ops_destination[obj_id][0]) 
 
         # if bop["weapon_cool_time"] == 0 and closest_enemy is not None and self.distance(closest_enemy["cur_hex"], bop["cur_hex"]) >=2: 
         #     self.__handle_open_fire(obj_id)   
-
-
-    #@szh 0404 战车开火策略
-    # @time_decorator
-    # def defend_chariot_fire_stage(self, obj_id):
-    #     destination = None
-    #     bop = self.get_bop(obj_id)
-    #     if len(bop["move_path"]) != 0:         # 如果当前还在行进中
-    #         #destination = bop["move_path"][-1]
-    #         return 
-    #     closest_city = min(
-    #         self.observation["cities"],
-    #         key=lambda city: self.distance(bop["cur_hex"], city["coord"]),
-    #     )
-    #     if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
-    #         self.__handle_open_fire(obj_id)
-    #     flag_ene_is_around_city = False
-    #     city_ene = [op for op in self.observation["operators"] if op["color"]!=self.color and self.distance(op["cur_hex"], closest_city["coord"]) <= 2]
-    #     if not destination :                    # 如果没有行进规划 待安排的情况  
-    #         if len(city_ene) > 0:
-    #             flag_ene_is_around_city = True
-    #         closest_enemy , min_dis = self.get_bop_closest(bop, self.defend_enemy_info())
-    #         if min_dis < 3: # 避免同格交战
-    #             #找自身范围为2的游击点  但得和对方算子拉开距离
-    #              youji_point_candidates = self.defend_get_key_point_around_fort(\
-    #              bop["cur_hex"],
-    #              mode = "youji"
-    #             )
-    #              youji_point_candidates = self.defend_filter_key_point_by_scope(youji_point_candidates)
-    #              youji_point_candidates = [p for p in youji_point_candidates if self.distance(p, closest_enemy["cur_hex"]) >= min_dis]
-    #              youji_point_candidates.sort(key = lambda p : self.map.basic[p // 100][p % 100]["elev"] , reverse= True)
-    #              destination = youji_point_candidates                
-    #         elif min_dis >= 3:   #  查看是否在cd中
-    #             # 检查是否满足条件
-    #             destination = self.defend_chariot_find_best_cover_points(
-    #                         closest_city["coord"], 4, 7
-    #                     )
-    #             if bop["cur_hex"] in destination:
-    #                 destination = None
-                
-    #         #     #if              #  查看其它夺控点是否需要增援 根据情况调整自己位置
-    #         #     pass
-    #     if destination is not None:
-    #         self._move_action(obj_id, destination[0]) 
-    #         # 这个地方报错了  出现destination 是 int
-            
-    #     if bop["weapon_cool_time"] == 0:
-    #         self.__handle_open_fire(obj_id)
     
     #@szh0404  reset 占领点状态
-    @time_decorator
     def reset_occupy_state(self):
         cities = [ci for ci in self.observation["cities"] ]
         ourunits = self.get_defend_armorcar_units() + self.get_defend_infantry_units() + self.get_defend_tank_units()
@@ -2571,8 +2605,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 判断是否去其他点支援
         # if bop["weapon_cool_time"] == 0:        # 如果到达冷却时间
         self.__tank_handle_open_fire(obj_id)
-        if self.ops_destination[obj_id] == bop["cur_hex"]:
-            self.ops_destination[obj_id] = ""
+        if len(self.ops_destination[obj_id]) and self.ops_destination[obj_id][0] == bop["cur_hex"]:
+            self.ops_destination[obj_id].pop(0)
         """
             # 策略  找没有啥敌人的夺控点一占
             # 1. 先判断当前是否在夺控点上  
@@ -2585,14 +2619,23 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             
         """
         # 找最近的且未夺控的点 一种是没人夺控  就是中立颜色              
-        if self.ops_destination[obj_id] != "" and bop["cur_hex"] != self.ops_destination[obj_id]:
-            self._move_action(obj_id, self.ops_destination[obj_id])
+        if self.ops_destination[obj_id] != [] and bop["cur_hex"] != self.ops_destination[obj_id][0]:
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
             return
         tar = self.defend_check_nearby_enemy(obj_id)
         if len(tar) > 0:
             self._move_action(obj_id, tar[0])
             return
-        if bop["speed"] == 0  or self.ops_destination[obj_id] == "":  
+        if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
+            self.gen_occupy(obj_id)
+        
+        if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) >= 3 or self.defend_check_nearest_to_enemy(obj_id): 
+            #附近有敌方算子 而且很多  溜了溜了
+            destination = self.defend_chariot_find_best_cover_points(bop["cur_hex"], 3, 5)
+            self.ops_destination[obj_id]  = [ destination[0] ]
+            self._move_action(obj_id, self.ops_destination[obj_id][0])
+            return   
+        if bop["speed"] == 0  or self.ops_destination[obj_id] == []:  
             # 判断和敌方单位距离
             pts_candidates = self.map.get_grid_distance(\
                 bop["cur_hex"], 2, 4
@@ -2608,20 +2651,14 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 ))
             target_pos = random.choice(pts_candidates)
             self._move_action(obj_id, target_pos)
-            self.ops_destination[obj_id] = target_pos
+            self.ops_destination[obj_id] = [ target_pos ]
 
-        if bop["cur_hex"] in [c["coord"] for c in self.observation["cities"]]:
-            self.gen_occupy(obj_id)
-            if len(self.defend_count_current_pos_enemy(closest_city["coord"], 2)) > 3: #附近有敌方算子 而且很多  溜了溜了
-                destination = self.defend_chariot_find_best_cover_points(bop["cur_hex"], 5, 7)
-                self.ops_destination[obj_id]  = destination[0]
-                self._move_action(obj_id, self.ops_destination[obj_id])
-                return   
+        
         city_empty = self.defend_check_city_no_hex()
         if self.distance(bop["cur_hex"], closest_city["coord"]) >= 4 and len(city_empty) > 0:
             city_empty.sort(key = lambda c: self.distance(c["coord"], bop["cur_hex"]))
-            self.ops_destination[obj_id] = city_empty[0]["coord"]
-            self._move_action(obj_id, self.ops_destination[obj_id])   
+            self.ops_destination[obj_id] = [ city_empty[0]["coord"] ]
+            self._move_action(obj_id, self.ops_destination[obj_id][0])   
             return         
                 
         if len(self.defend_count_current_pos_enemy(closest_city["coord"], 1)) == 0 and self.color != closest_city["flag"]:
@@ -2651,7 +2688,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     continue
                 cn = list(self.map.get_grid_distance(c["coord"], 0, 1))  # 0-2 范围没有我方
                 for t in ourunits:
-                    if self.ops_destination[ t["obj_id"] ] in cn:
+                    if len(self.ops_destination[ t["obj_id"] ]) == 0:
+                        continue
+                    if self.ops_destination[ t["obj_id"] ][0] in cn:
                          flag_c_need_support = False
                 if flag_c_need_support and self.color != c["flag"] :   #可去支援
                     if len(self.defend_count_current_pos_enemy(c["coord"], 1)) == 0 and \
@@ -2679,8 +2718,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 destination = [random.choice(youji_point_candidates)]
         if type(destination) == int:
             destination = [destination]
-        self.ops_destination[obj_id]  = destination[0]
-        self._move_action(obj_id, self.ops_destination[obj_id])  
+        self.ops_destination[obj_id]  = [ destination[0] ]
+        self._move_action(obj_id, self.ops_destination[obj_id][0])  
         return      
            
     #@szh0404  打个补丁 解聚之后周围随机数移动  
