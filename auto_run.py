@@ -271,7 +271,7 @@ def save_replay(replay_name, data):
 if __name__ == "__main__":
     jieguo = record_result()
     jieguo.record_config("debug crossfire, can shoot off when self.num>1300, and using qianpai")
-    for i in range(10):
+    for i in range(5):
         print("\n\n"+"round "+str(i)+"\n")
 
         # # single thread model
