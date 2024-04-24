@@ -204,7 +204,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         pos_selected_list = [] 
         for i in range(geshu-3):
             if neighbor_field_list_selected[geshu - 1- i] <a1:
-                pos_selected_list = neighbor_pos_list_selected[0:geshu - 1- i]
+                pos_selected_list = neighbor_pos_list_selected[0:geshu- i]
                 break
         if len(pos_selected_list) == 0 :
             # 没有合适的，连三个都没有
