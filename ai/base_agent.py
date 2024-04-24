@@ -711,6 +711,11 @@ class BaseAgent(ABC):
         move_type = self.get_move_type(bop)
         route = self.map.gen_move_route(bop["cur_hex"], target_pos, move_type)
         
+        # 暴力一点，如果有空的路径，就直接往点里去了。
+        if self.num > 800:
+            if len(route)==0:
+                route = self.map.gen_move_route(bop["cur_hex"], self.target_pos, move_type)
+
         action_move =  {
                 "actor": self.seat,
                 "obj_id": attacker_ID,
