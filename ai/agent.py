@@ -549,17 +549,35 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # no, if nothing detected, then random patrol target
             pos_ave =self.get_pos_average(self.status["operators"]) 
             pos_center = self.get_pos_average([pos_ave,target_pos], model="input_hexs")
+            if pos_center == self.target_pos:
+                # 那说明是都到了，那就没必要再飞来飞去了
+                return
             
             pos_around_list = list(self.map.get_grid_distance(pos_center,3,5))
-            target_pos_random = pos_around_list[random.randint(0,len(pos_around_list)-1)]
-            if target_pos_random == -1:
-                target_pos_random = pos_center
+            # 这个逻辑得升级一下，近距离效果不好，得整个飞来飞去的。随机到前面一定角度内的某个地方，恐怕是比较好的。
+            pos_ave_xy = self._hex_to_xy(pos_ave)
+            target_xy = self._hex_to_xy(target_pos)
+            vector_xy = target_xy - pos_ave_xy
+            # 然后随机一个度数
+            rad_random = random.randint(-60,60) / 180 * np.pi
+            # 然后搞个坐标转换矩阵
+            A = np.array([[np.cos(rad_random), np.sin(rad_random) ], [-np.sin(rad_random), np.cos(rad_random)]])
+            # 然后旋转个坐标,缩放个长度
+            vector_xy_rotate = A * vector_xy.reshape(2,1)
+            vector_xy_rotate = vector_xy_rotate / np.linalg.norm(vector_xy_rotate) * 7 
+            # 然后把预定的目标点拿出来
+            target_xy_random =  vector_xy_rotate + pos_ave
+            try:
+                target_pos_random = self._xy_to_hex(target_xy_random)
+            except:
+                target_pos_random = target_pos
+
+            # target_pos_random = pos_around_list[random.randint(0,len(pos_around_list)-1)]
+            # if target_pos_random == -1:
+            #     target_pos_random = pos_center
 
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
-                # if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
-                #     # self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)
-                #     self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)    
                 self.set_move_and_attack(UAV_unit["obj_id"],target_pos=target_pos_random,model="force")        
             pass
 
