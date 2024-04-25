@@ -8,7 +8,7 @@ import zipfile
 import time
 import copy
 from transfer import transfer
-from agent_guize import * 
+from agent import * 
 from tools import *
 import numpy as np
 
@@ -53,8 +53,8 @@ class EnvForRL(object):
     def __init_crossfire(self):
         # from ai.agent import Agent
         from train_env.cross_fire_env import CrossFireEnv
-        self.agent_guize = agent_guize()
-        # it should be point out that agent_guize is not the 'agent' in RL framework, instead, agent_guize is part of RL evironment.
+        self.agent = Agent()
+        # it should be point out that agent is not the 'agent' in RL framework, instead, agent is part of RL evironment.
         self.env = CrossFireEnv()
         self.begin = time.time()     
         self.max_step = 2800 
@@ -65,6 +65,7 @@ class EnvForRL(object):
 
         self.red_obj_num = 16 # need debug.
         self.blue_obj_num = 4 
+        self.enemy_num_max = 3 
         
         # self.get_target_cross_fire() 
 
@@ -83,7 +84,7 @@ class EnvForRL(object):
         self.old_state_dict = copy.deepcopy(self.state_dict)
 
         self.all_states.append(state_dict[self.white_flag])
-        self.agent_guize.setup(
+        self.agent.setup(
             {
                 "scenario": self.env.scenario_data,
                 "basic_data": self.env.basic_data,
@@ -96,8 +97,8 @@ class EnvForRL(object):
                 "user_id": ai_user_id,
             }
         )        
-        self.map = self.agent_guize.map
-        self.map_data = self.agent_guize.map_data
+        self.map = self.agent.map
+        self.map_data = self.agent.map_data
         pass 
 
     def save_replay(self,replay_name, data):
@@ -168,15 +169,21 @@ class EnvForRL(object):
                 alt_around_single = -1 
                 xy_around_single = [-100,-100] 
             try:
-                threaten_field_single = self.agent_guize.threaten_field[hex_around_single_abs] 
+                threaten_field_single = self.agent.threaten_field[hex_around_single_abs] 
             except KeyError:
                 threaten_field_single = 0 
             state_list = state_list + [xy_around_single[0],xy_around_single[1],alt_around_single,threaten_field_single]
         geshu = len(state_list)
 
         return state_list, geshu
-
-
+    
+    def get_state_global_terrain(self):
+        # 全局地形，只在一开始记录一次，后面就反正往里塞进去就是了。
+        if self.num <2:
+            # 说明是第一次。把地形数据的区域取出来
+            pass
+        print("unfinished yet")
+            
     def get_state(self, state_dict):
         # get state_real from state_dict,
 
@@ -201,6 +208,18 @@ class EnvForRL(object):
         #     self.state[index_now:(index_now+geshu_single)] = state_list[:]
         #     index_now = index_now + geshu 
         
+        # first, enemy obj state. using self.detected_state
+        units_enemy = self.agent.detected_state
+        for i in range(self.enemy_num_max):
+            try:
+                unit = units_enemy[i]
+                state_list, geshu_single = self.get_state_unit(unit)
+
+                self.state[index_now:(index_now+geshu_single)] = state_list[:]
+            except:
+                # 没探到，就用默认值。
+                self.state[index_now:(index_now+geshu_single)] = 0
+        
         # then, my obj states, which include detected enemy units.
         state_dict_my = state_dict
         my_obj_IDs = get_ID_list(state_dict_my) 
@@ -212,8 +231,10 @@ class EnvForRL(object):
 
             self.state[index_now:(index_now+geshu_single)] = state_list[:]
             index_now = index_now + geshu_single 
+        
+        # then, gloable 地形，which is important 的东西.
 
-        # then transfer.  ? it seems not xuyao. 
+        # then transfer.  ? it seems not 需要. 
             
         return self.state
 
@@ -269,9 +290,9 @@ class EnvForRL(object):
 
         self.state =self.get_state(self.state_dict[self.red_flag])
 
-        # call agent_guize, 
-        self.agent_guize.step(self.state_dict[self.red_flag], model="RL")
-        self.num = self.agent_guize.num
+        # call agent, 
+        self.agent.step(self.state_dict[self.red_flag], model="RL")
+        self.num = self.agent.num
         self.step_num = self.step_num + 1 
         
         # there must be some dim to indictate if a unit should be forced stop and change target.
@@ -279,7 +300,7 @@ class EnvForRL(object):
         action_real = action
         self.command_tank(action_real)
         # then generate self.act. 
-        self.act = self.agent_guize.Gostep_abstract_state()
+        self.act = self.agent.Gostep_abstract_state()
 
         # then generate action dict 
         action_dict = self.act
@@ -313,10 +334,10 @@ class EnvForRL(object):
 
     def shadow_step(self):
         # 这个用来实现"不发RL指令单纯空跑几帧规则",不然一个episode好几千步,就寄了
-        self.agent_guize.step(self.state_dict[self.red_flag], model="guize")
-        self.num = self.agent_guize.num
+        self.agent.step(self.state_dict[self.red_flag], model="guize")
+        self.num = self.agent.num
         # then generate self.act. 
-        self.act = self.agent_guize.Gostep_abstract_state()
+        self.act = self.agent.Gostep_abstract_state()
         action_dict = self.act
         state, done = self.env.step(action_dict)
         self.all_states.append(state[self.white_flag])
@@ -329,9 +350,9 @@ class EnvForRL(object):
         units = self.state_dict[self.red_flag]["operators"]
         if action_real[0] > 0:
             # which means it should be stopped and go another pos.
-            IFV_units = self.agent_guize.get_IFV_units()
-            infantry_units = self.agent_guize.get_infantry_units()
-            UAV_units = self.agent_guize.get_UAV_units()
+            IFV_units = self.agent.get_IFV_units()
+            infantry_units = self.agent.get_infantry_units()
+            UAV_units = self.agent.get_UAV_units()
             tank_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
 
             pos_ave_tank = get_pos_average(tank_units)
@@ -340,7 +361,7 @@ class EnvForRL(object):
             xy_new = np.array(action_real[1:3]) + hex_to_xy(pos_ave_tank)
             hex_new = xy_to_hex(xy_new)
             
-            self.agent_guize.group_A(tank_units,hex_new,model="force")
+            self.agent.group_A(tank_units,hex_new,model="force")
             pass
         else:
             # which means it should not change.
@@ -351,6 +372,7 @@ class EnvForRL(object):
     def render(self):
         print("unfinished yet")
         pass
+
     def Gostep(self):
         # 这个是把那些要维护状态的那些事情都搞进来。
         # 所有改act的东西都应该统一经过这里面。
