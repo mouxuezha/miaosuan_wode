@@ -170,20 +170,72 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     
     def group_A2(self,units,units_VIP):
         # 这个以低成本实现一个跟随的。units跟随units_VIP里面距离最近的一个，跟随的逻辑是直接瞄着其当前位置就去了。
+        # 改一下，不要最近的一个，要个随机的。“这几个和这几个周围，威胁没到一定程度的点中间，随机几个”
+        if len(units_VIP)==0:
+            # 那就是被跟随的已经被杀完了，那就无所谓了
+            # 这样的话会导致绕路机制无效化，其实也是有问题的，但是先不管了
+            for unit in units:
+                self.set_move_and_attack(unit,self.target_pos,model="force")   
+            return      
+        # 先取一下“周围的威胁较少的点“
+        pos_around_set = set()
+        distance_start = 0
+        distance_end = 1 
+        for unit in units_VIP:
+            pos_single = unit["cur_hex"]
+            pos_single_set = self.map.get_grid_distance(pos_single, distance_start, distance_end)
+            pos_around_set = pos_around_set | pos_single_set
+        
+        # 然后读人工势场，来搞个排序。然后再筛
+        pos_around_list = list(pos_around_set)
+        geshu = len(pos_around_list)
+        neighbor_field_array = np.zeros((geshu,2))
+        for i in range(geshu):
+            neighbor_pos_single = pos_around_list[i]
+            neighbor_field_single = self.threaten_field[neighbor_pos_single]
+            neighbor_field_array[i,0] = neighbor_pos_single
+            neighbor_field_array[i,1] = neighbor_field_single
+        neighbor_field_array_sorted = neighbor_field_array[neighbor_field_array[:,1].argsort()]
+        neighbor_pos_list_selected = neighbor_field_array_sorted[:,0]
+        neighbor_field_list_selected = neighbor_field_array_sorted[:,1]
+        neighbor_pos_list_selected = neighbor_pos_list_selected.astype(int)
+        # using np.int64 would cause trouble.
+        neighbor_pos_list_selected = neighbor_pos_list_selected.tolist()         
+        a1 =10 
+        # 然后根据威胁情况看后面往哪里去。
+        pos_selected_list = [] 
+        for i in range(geshu-3):
+            if neighbor_field_list_selected[geshu - 1- i] <a1:
+                pos_selected_list = neighbor_pos_list_selected[0:geshu- i]
+                break
+        if len(pos_selected_list) == 0 :
+            # 没有合适的，连三个都没有
+            pos_selected_list =  neighbor_pos_list_selected[0:3]
+        
+        # 好，然后开始随机分配了。
+        geshu_selected = len(pos_selected_list)
         for unit in units:
-            if len(units_VIP)==0:
-                # 那就是被跟随的已经被杀完了，那就无所谓了
-                self.set_move_and_attack(unit,self.target_pos,model="force")
-            else:
-                # 找那一堆里面距离最近的来跟随。
-                jvli_list = [] 
-                for i in range(len(units_VIP)):
-                    jvli_single = self.distance(unit,units_VIP[i])  
-                    jvli_list.append(jvli_single)
-                jvli_min = min(jvli_list)
-                index_min = jvli_list.index(jvli_min)
-                VIP_pos_single = units_VIP[index_min]["cur_hex"]
-                self.set_move_and_attack(unit,VIP_pos_single,model="force")
+            # 来个随机的index
+            index_selected = random.randint(0,geshu_selected-1)
+            self.set_move_and_attack(unit,pos_selected_list[index_selected],model="force")
+                    
+
+        # for unit in units:
+        #     if len(units_VIP)==0:
+        #         # 那就是被跟随的已经被杀完了，那就无所谓了
+        #         # 这样的话会导致绕路机制无效化，其实也是有问题的，但是先不管了
+        #         self.set_move_and_attack(unit,self.target_pos,model="force")
+        #     else:
+        #         # 找那一堆里面距离最近的来跟随。
+        #         jvli_list = [] 
+        #         for i in range(len(units_VIP)):
+        #             jvli_single = self.distance(unit,units_VIP[i])  
+        #             jvli_list.append(jvli_single)
+        #         jvli_min = min(jvli_list)
+        #         index_min = jvli_list.index(jvli_min)
+        #         VIP_pos_single = units_VIP[index_min]["cur_hex"]
+        #         self.set_move_and_attack(unit,VIP_pos_single,model="force")
+                
 
     def get_pos_list_A(self, units, target_pos):
         # 上来先维护target_pos_list,包括判断威胁等级看是不是有必要绕路。
@@ -268,7 +320,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     # 那就是已经快到了，那就得限制一下绕路的距离
                     len_raolu = round(xy_center_distance)
                 else:
-                    len_raolu = 18 
+                    len_raolu = 15 
 
                 try:
                     xy_candidate = xy_center + len_raolu*n_xy_list[0]
@@ -295,7 +347,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                         # 那就是已经快到了，那就得限制一下绕路的距离
                         len_raolu = round(xy_center_distance)
                     else:
-                        len_raolu = 18 
+                        len_raolu = 15 
 
                     try:
                         xy_candidate = enemy_xy + len_raolu*n1_xy
@@ -407,8 +459,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         jvli = self.distance(pos_ave, self.target_pos)
 
         # if there is no more time, then just chong.
-        time_assume = round(jvli * 20 * 1.1)
-        # time_assume = -114514
+        time_assume = round(jvli * 20 * 1.7)
+        # time_assume = 1114514
         if time_assume > (self.end_time - self.num):
             # then just chong, without using naozi
             for unit in units:
@@ -492,17 +544,36 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # no, if nothing detected, then random patrol target
             pos_ave =self.get_pos_average(self.status["operators"]) 
             pos_center = self.get_pos_average([pos_ave,target_pos], model="input_hexs")
+            if pos_center == self.target_pos:
+                # 那说明是都到了，那就没必要再飞来飞去了
+                return
             
-            pos_around_list = list(self.map.get_grid_distance(pos_center,3,5))
-            target_pos_random = pos_around_list[random.randint(0,len(pos_around_list)-1)]
-            if target_pos_random == -1:
-                target_pos_random = pos_center
+            
+            # 这个逻辑得升级一下，近距离效果不好，得整个飞来飞去的。随机到前面一定角度内的某个地方，恐怕是比较好的。
+            pos_ave_xy = self._hex_to_xy(pos_ave)
+            target_xy = self._hex_to_xy(target_pos)
+            vector_xy = target_xy - pos_ave_xy
+            # 然后随机一个度数
+            rad_random = random.randint(-60,60) / 180 * np.pi
+            # 然后搞个坐标转换矩阵
+            A = np.array([[np.cos(rad_random), np.sin(rad_random) ], [-np.sin(rad_random), np.cos(rad_random)]])
+            # 然后旋转个坐标,缩放个长度
+            vector_xy_rotate =np.matmul(A,vector_xy.reshape(2,1)) 
+            vector_xy_rotate = vector_xy_rotate / np.linalg.norm(vector_xy_rotate) * 7 
+            # 然后把预定的目标点拿出来
+            target_xy_random =  vector_xy_rotate.reshape(2,) + pos_ave_xy
+            try:
+                target_pos_random = self._xy_to_hex(target_xy_random)
+            except:
+                target_pos_random = target_pos
+            
+            # pos_around_list = list(self.map.get_grid_distance(pos_center,3,5))
+            # target_pos_random = pos_around_list[random.randint(0,len(pos_around_list)-1)]
+            # if target_pos_random == -1:
+            #     target_pos_random = pos_center
 
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
-                # if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
-                #     # self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)
-                #     self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos_random)    
                 self.set_move_and_attack(UAV_unit["obj_id"],target_pos=target_pos_random,model="force")        
             pass
 
@@ -536,6 +607,109 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             selected_pos= self.target_pos
         # 然后设定状态就开始过去了。
         self.set_move_and_attack(UAV_unit,selected_pos,model="force")
+    
+    def get_pos_UAV_patrol(self,UAV_units, target_pos):
+        # 根据当前无人机位置和目标位置，做一个折线的路径出来。
+        UAV_pos = self.get_pos(UAV_units[0]) # 原则上能用统一接口尽量用统一接口，别搞的到处都是读字典的字段。
+        UAV_xy = self._hex_to_xy(UAV_pos) # 这个视为是起点了
+        target_xy = self._hex_to_xy(target_pos)
+
+        vector_xy = target_xy - UAV_xy
+        # 一个理解：现在本来就是粗糙的路子，所以别走精细的，搞个锯齿形状的也就罢了。
+        # 无人机8秒一格，车20秒一格，夹角66度的时候，投影出来速度是一样的，sin(66.42)=0.9165
+        
+        L_xy = np.linalg.norm(vector_xy)
+        n_zhuanzhe = 4 # 这个看情况改改。本来可以做个动态的，但是好像也没有什么必要
+        L_depart  = L_xy / n_zhuanzhe * 1.5
+        vector_xy_normal = vector_xy / L_xy 
+
+        # 求两个垂直于路径的法向量。
+        n1_xy = np.array([vector_xy[1], -1*vector_xy[0]]) / L_xy
+        # n2_xy = -1*n1_xy
+
+        flag_zhengfu = 1 
+        pos_next_list = [] 
+        for i in range(n_zhuanzhe):
+            flag_zhengfu = flag_zhengfu * -1 # 每回合交替来正负号。
+            xy_cut = UAV_xy + L_depart*(i+1)*vector_xy_normal
+            xy_candidate = xy_cut + L_depart*flag_zhengfu*n1_xy
+            try:
+                pos_candidate = self._xy_to_hex(xy_candidate)
+            except:
+                # 要是上面那个在地图外，那就回到中间线上面的这个点。
+                pos_candidate =  self._xy_to_hex(xy_cut)
+            pos_next_list.append(pos_candidate)
+        pos_next_list.append(self.target_pos)
+        return pos_next_list
+
+    def get_pos_UAV_patrol2(self, UAV_units, target_pos):
+        # 这个用来服务于本昌哥说的那种所谓“找个区域里覆盖路径最大的点然后过去”
+        UAV_pos = self.get_pos(UAV_units[0]) # 原则上能用统一接口尽量用统一接口，别搞的到处都是读字典的字段。
+        pos_ave = self.get_pos_average(self.status["operators"])
+        
+        # 调人家的地图算个路径。反正这玩意只在开始的时候调。
+        assumed_path = list(self.map.gen_move_route(pos_ave,target_pos,0))
+
+        # 调人家的地图接口，来一系列的可疑的点
+        pos_center = self.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
+        
+        area = list(self.map.get_grid_distance(pos_center, 0, 30))
+        geshu_area = len(area)
+
+        # 然后开始算呗。对area里面的可疑的每一个点，都计算能够打到路上的多少点，然后排序嘛。
+        # 0的就不参与排序了。然后别的再算一堆距离做一个跟距离相关的排序，然后直接照着那个飞完事了，岂不美哉。
+        pos_and_value_sort = np.zeros((geshu_area,3))
+        for i in range(geshu_area):
+            count_value = 0
+            enemy_pos = area[i]
+            enemy_type = 2
+            my_type = 2 # 直接用车辆了，
+            for pos_single in assumed_path:
+                # 能打到，就路径里面+1
+                # 调地图，看是不是会被打到。
+                flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)
+                if flag_can_shoot==True:
+                    count_value = count_value + 1
+                else:
+                    pass
+            # 调距离，准备后面
+            jvli = self.distance(pos_ave,enemy_pos)
+            pos_and_value_sort[i,0] = enemy_pos 
+            pos_and_value_sort[i,1] = count_value
+            pos_and_value_sort[i,1] = jvli
+        
+        # 然后排序
+        pos_and_value_sorted = pos_and_value_sort[pos_and_value_sort[:,1].argsort()]
+        pos_and_value_sorted = np.flipud(pos_and_value_sorted) 
+        # 然后取前面几个，然后再按距离排个序
+        pos_and_value_sorted = pos_and_value_sorted[0:10, :]
+        pos_and_value_sorted = pos_and_value_sorted[pos_and_value_sorted[:,2].argsort()]
+
+        pos_list_selected = pos_and_value_sorted[:,0]
+        # value_list_selected = pos_and_value_sorted[:,1]
+        # change to int, or there would be type error in map.py
+        pos_list_selected = pos_list_selected.astype(int)
+        # using np.int64 would cause trouble.
+        pos_list_selected = pos_list_selected.tolist()
+        return pos_list_selected
+
+    def UAV_patrol3(self,target_pos):
+        # 这个是思想滑坡的UAV_patrol，生成一个从头到尾的Z字形的list，然后顺着那个飞。
+        # 考虑加一个逻辑，在特定的情况下退化为之前的那个UAV_patrol。
+        UAV_units = self.get_UAV_units()
+        if self.num==1:
+            # 首先要算那一系列的点在哪里。
+            pos_next_list = self.get_pos_UAV_patrol(UAV_units, target_pos) # 这个是走折线的
+            # pos_next_list = self.get_pos_UAV_patrol2(UAV_units, target_pos)  # 这个是本昌哥说的那个“优先高威胁点”的
+            # 讲道理直接把这俩加起来其实也是个说法的呀。
+
+            # 然后去呗，好像没有什么不妥的地方。
+            for unit in UAV_units:
+                self.set_move_and_attack(unit,target_pos,model="force",pos_next_list=pos_next_list)
+                
+        elif self.num>800:
+            # 讲道理还是这个在部队前方的比较靠谱吧。反正看看效果
+            self.UAV_patrol(target_pos)
 
     def IFV_transport(self,model="on"):
         # 这个会覆盖给步战车和步兵的其他命令。优先执行“开过去接人”。
@@ -634,7 +808,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             if "abstract_state" in abstract_state_single:
                 if abstract_state_single["abstract_state"] == "jieju":
                     flag_finished and False
-                if abstract_state_single["abstract_state"] == "jieju":
+                if abstract_state_single["abstract_state"] == "move_and_attack":
                     if "flag_jieju" in abstract_state_single:
                         flag_finished and False
                 pass
@@ -983,7 +1157,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.F2A(target_pos)
             pass # disabled for tiaoshi
         
-        if (self.num % 100==0) and (self.num>-200) and (self.num<1000):
+        if (self.num % 100==1) and (self.num>-200) and (self.num<1100):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
             # deal with UAV.这里面是带骑脸目标、停车、引导打击等逻辑的，但是好像不是太适合现在这个场景。
             self.UAV_patrol(target_pos)
