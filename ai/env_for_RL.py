@@ -100,6 +100,11 @@ class EnvForRL(object):
         self.map = self.agent.map
         self.map_data = self.agent.map_data
         pass 
+    
+    def __init_scout(self):
+        print("unfinished yet")
+    def __init_defend(self):
+        print("unfinished yet")
 
     def save_replay(self,replay_name, data):
         zip_name = f"logs/replays/{replay_name}.zip"
@@ -276,6 +281,24 @@ class EnvForRL(object):
             
         return self.state
 
+    def add_actions(self, action_dict):
+        # 这个试图来一个比较阳间的“从已有的命令中过滤掉特定ID的命令，然后把需要执行的命令加到其中去”的函数。
+        # 应该能够有助于scout赛道和defend赛道发命令。
+
+        # 先过滤一下
+        print("unfinished yet")
+        pass
+
+    def filter_action(self, ID, **kargs):
+        # 过滤命令的独立出来一个好了.
+        # TODO: filter by type or other keys
+        act_new = []
+        for act_single in self.act:
+            if act_single["obj_id"] != ID:
+                act_new.append(act_single)
+        return act_new
+
+
     def calculate_reward_cross_fire(self):
         # calculate the rl reward according to self.act and status.
         rewrad_list = [] 
@@ -317,7 +340,7 @@ class EnvForRL(object):
             self.reward = self.reward + reward_single
 
         return self.reward 
-    
+
     def calculate_reward_scout(self):
         # calculate the rl reward according to self.act and status.
         # 尚霖琢磨一下这部分罢，reward咋定一定程度上是关系成败的
@@ -417,7 +440,28 @@ class EnvForRL(object):
             # which means it should not change.
             print("AI thinks nothing should happen.")
             pass 
-    
+
+    def command_scout_demo(self, action_real):
+        # 这面实现“怎么把智能体那边拿来的指令生成为self.act里面的动作”
+        act_RL = self.agent._move_action(0,1145)
+        """
+            command
+        """
+
+        self.act = self.filter_action(0)
+        self.act = self.add_actions(act_RL[-1])
+        print("unfinished yet")    
+
+    def command_defend_demo(self, action_real):
+        # 这面实现“怎么把智能体那边拿来的指令生成为self.act里面的动作”
+        act_RL = self.agent._move_action(0,1145)
+        """
+            command
+        """
+
+        self.act = self.filter_action(0)
+        self.act = self.add_actions(act_RL[-1])
+        print("unfinished yet")    
 
     def render(self):
         print("unfinished yet")
