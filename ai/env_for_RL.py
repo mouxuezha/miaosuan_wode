@@ -132,22 +132,36 @@ class EnvForRL(object):
         self.action = np.zeros(self.action_dim,)  
     
     def get_altitude(self,target_pos):
-        qian2wei = round(target_pos / 100)
-        hou2wei = target_pos - qian2wei*100 
+        xy_single = hex_to_xy(target_pos)
+        # qian2wei = round(target_pos / 100)
+        # hou2wei = target_pos - qian2wei*100 
+        qian2wei = xy_single[1]
+        hou2wei = xy_single[0]
         map_data_single = self.map_data[qian2wei][hou2wei]
         altitude_single = map_data_single['elev']
         # print("get_altitude need debug")
         return altitude_single
+    
+    def get_terrain(self,target_pos):
+        xy_single = hex_to_xy(target_pos)
+        # qian2wei = round(target_pos / 100)
+        # hou2wei = target_pos - qian2wei*100 
+        qian2wei = xy_single[1]
+        hou2wei = xy_single[0]
+        map_data_single = self.map_data[qian2wei][hou2wei]
+        terrain_single = map_data_single['cond']
+        # print("get_terrain need debug")
+        return terrain_single
 
     def get_state_unit(self, unit):
         # avoid copy and paste code.
         state_list = [] 
         sub_type = unit["sub_type"]
         hex_absolute = get_pos(unit,status=self.state_dict[self.red_flag]) 
-        hex_single = hex_absolute - self.target_pos
+        
         # use relative hex.
+        xy_single = np.array(hex_to_xy(hex_absolute)) - np.array(hex_to_xy(self.target_pos)) 
         alt_single = unit["altitude"]
-        xy_single = hex_to_xy(hex_single)
         keep_remain_time = unit["keep_remain_time"]
         speed = unit["speed"]
         weapon_CD = unit["weapon_cool_time"]
@@ -177,11 +191,33 @@ class EnvForRL(object):
 
         return state_list, geshu
     
-    def get_state_global_terrain(self):
+    def get_state_global_terrain(self,**kargs):
         # 全局地形，只在一开始记录一次，后面就反正往里塞进去就是了。
         if self.num <2:
             # 说明是第一次。把地形数据的区域取出来
+            pos_ave = self.agent.get_pos_average(self.agent.status["operators"])
+            pos_center = self.agent.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
+            
+            if "area" in kargs:
+                area = kargs["area"]
+            else:
+                area = self.map.get_grid_distance(pos_center, 0, 30)
+            state_terrain = [] 
+            for i in range(len(area)):
+                xy_single = hex_to_xy(area[i])
+                dixing_single = self.get_terrain(area[i])
+                state_terrain = state_terrain + [xy_single[0],xy_single[1],self.get_altitude(area[i])]
+                state_terrain.append(dixing_single)
+            state_terrain = np.array(state_terrain)
+            self.state_terrain = state_terrain
+            # 然后把地形数据取出来
             pass
+        else:
+            # 说明不是第一次，就直接把地形数据取出来
+            state_terrain = self.state_terrain
+            pass
+        geshu = len(state_terrain)
+        return state_terrain, geshu
         print("unfinished yet")
             
     def get_state(self, state_dict):
@@ -233,6 +269,8 @@ class EnvForRL(object):
             index_now = index_now + geshu_single 
         
         # then, gloable 地形，which is important 的东西.
+        state_terrain, geshu_terrain = self.get_state_global_terrain()
+        self.state[index_now:(index_now+geshu_terrain)] = state_terrain[:]
 
         # then transfer.  ? it seems not 需要. 
             
@@ -280,6 +318,18 @@ class EnvForRL(object):
 
         return self.reward 
     
+    def calculate_reward_scout(self):
+        # calculate the rl reward according to self.act and status.
+        # 尚霖琢磨一下这部分罢，reward咋定一定程度上是关系成败的
+        rewrad_list = [] 
+        print("unfinished yet")
+
+    def calculate_reward_defend(self):
+        # calculate the rl reward according to self.act and status.
+        # 子航琢磨一下这部分罢，reward咋定一定程度上是关系成败的
+        rewrad_list = [] 
+        print("unfinished yet")
+
     def step(self, action):
         # 
         # get the target first.
