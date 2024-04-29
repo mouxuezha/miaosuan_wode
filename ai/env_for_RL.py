@@ -8,7 +8,7 @@ import zipfile
 import time
 import copy
 from transfer import transfer
-from agent_guize import * 
+from agent import * 
 from tools import *
 import numpy as np
 
@@ -53,8 +53,8 @@ class EnvForRL(object):
     def __init_crossfire(self):
         # from ai.agent import Agent
         from train_env.cross_fire_env import CrossFireEnv
-        self.agent_guize = agent_guize()
-        # it should be point out that agent_guize is not the 'agent' in RL framework, instead, agent_guize is part of RL evironment.
+        self.agent = Agent()
+        # it should be point out that agent is not the 'agent' in RL framework, instead, agent is part of RL evironment.
         self.env = CrossFireEnv()
         self.begin = time.time()     
         self.max_step = 2800 
@@ -65,6 +65,7 @@ class EnvForRL(object):
 
         self.red_obj_num = 16 # need debug.
         self.blue_obj_num = 4 
+        self.enemy_num_max = 3 
         
         # self.get_target_cross_fire() 
 
@@ -83,7 +84,7 @@ class EnvForRL(object):
         self.old_state_dict = copy.deepcopy(self.state_dict)
 
         self.all_states.append(state_dict[self.white_flag])
-        self.agent_guize.setup(
+        self.agent.setup(
             {
                 "scenario": self.env.scenario_data,
                 "basic_data": self.env.basic_data,
@@ -96,9 +97,14 @@ class EnvForRL(object):
                 "user_id": ai_user_id,
             }
         )        
-        self.map = self.agent_guize.map
-        self.map_data = self.agent_guize.map_data
+        self.map = self.agent.map
+        self.map_data = self.agent.map_data
         pass 
+    
+    def __init_scout(self):
+        print("unfinished yet")
+    def __init_defend(self):
+        print("unfinished yet")
 
     def save_replay(self,replay_name, data):
         zip_name = f"logs/replays/{replay_name}.zip"
@@ -131,22 +137,36 @@ class EnvForRL(object):
         self.action = np.zeros(self.action_dim,)  
     
     def get_altitude(self,target_pos):
-        qian2wei = round(target_pos / 100)
-        hou2wei = target_pos - qian2wei*100 
+        xy_single = hex_to_xy(target_pos)
+        # qian2wei = round(target_pos / 100)
+        # hou2wei = target_pos - qian2wei*100 
+        qian2wei = xy_single[1]
+        hou2wei = xy_single[0]
         map_data_single = self.map_data[qian2wei][hou2wei]
         altitude_single = map_data_single['elev']
         # print("get_altitude need debug")
         return altitude_single
+    
+    def get_terrain(self,target_pos):
+        xy_single = hex_to_xy(target_pos)
+        # qian2wei = round(target_pos / 100)
+        # hou2wei = target_pos - qian2wei*100 
+        qian2wei = xy_single[1]
+        hou2wei = xy_single[0]
+        map_data_single = self.map_data[qian2wei][hou2wei]
+        terrain_single = map_data_single['cond']
+        # print("get_terrain need debug")
+        return terrain_single
 
     def get_state_unit(self, unit):
         # avoid copy and paste code.
         state_list = [] 
         sub_type = unit["sub_type"]
         hex_absolute = get_pos(unit,status=self.state_dict[self.red_flag]) 
-        hex_single = hex_absolute - self.target_pos
+        
         # use relative hex.
+        xy_single = np.array(hex_to_xy(hex_absolute)) - np.array(hex_to_xy(self.target_pos)) 
         alt_single = unit["altitude"]
-        xy_single = hex_to_xy(hex_single)
         keep_remain_time = unit["keep_remain_time"]
         speed = unit["speed"]
         weapon_CD = unit["weapon_cool_time"]
@@ -168,15 +188,43 @@ class EnvForRL(object):
                 alt_around_single = -1 
                 xy_around_single = [-100,-100] 
             try:
-                threaten_field_single = self.agent_guize.threaten_field[hex_around_single_abs] 
+                threaten_field_single = self.agent.threaten_field[hex_around_single_abs] 
             except KeyError:
                 threaten_field_single = 0 
             state_list = state_list + [xy_around_single[0],xy_around_single[1],alt_around_single,threaten_field_single]
         geshu = len(state_list)
 
         return state_list, geshu
-
-
+    
+    def get_state_global_terrain(self,**kargs):
+        # 全局地形，只在一开始记录一次，后面就反正往里塞进去就是了。
+        if self.num <2:
+            # 说明是第一次。把地形数据的区域取出来
+            pos_ave = self.agent.get_pos_average(self.agent.status["operators"])
+            pos_center = self.agent.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
+            
+            if "area" in kargs:
+                area = kargs["area"]
+            else:
+                area = self.map.get_grid_distance(pos_center, 0, 30)
+            state_terrain = [] 
+            for i in range(len(area)):
+                xy_single = hex_to_xy(area[i])
+                dixing_single = self.get_terrain(area[i])
+                state_terrain = state_terrain + [xy_single[0],xy_single[1],self.get_altitude(area[i])]
+                state_terrain.append(dixing_single)
+            state_terrain = np.array(state_terrain)
+            self.state_terrain = state_terrain
+            # 然后把地形数据取出来
+            pass
+        else:
+            # 说明不是第一次，就直接把地形数据取出来
+            state_terrain = self.state_terrain
+            pass
+        geshu = len(state_terrain)
+        return state_terrain, geshu
+        print("unfinished yet")
+            
     def get_state(self, state_dict):
         # get state_real from state_dict,
 
@@ -201,6 +249,18 @@ class EnvForRL(object):
         #     self.state[index_now:(index_now+geshu_single)] = state_list[:]
         #     index_now = index_now + geshu 
         
+        # first, enemy obj state. using self.detected_state
+        units_enemy = self.agent.detected_state
+        for i in range(self.enemy_num_max):
+            try:
+                unit = units_enemy[i]
+                state_list, geshu_single = self.get_state_unit(unit)
+
+                self.state[index_now:(index_now+geshu_single)] = state_list[:]
+            except:
+                # 没探到，就用默认值。
+                self.state[index_now:(index_now+geshu_single)] = 0
+        
         # then, my obj states, which include detected enemy units.
         state_dict_my = state_dict
         my_obj_IDs = get_ID_list(state_dict_my) 
@@ -212,10 +272,32 @@ class EnvForRL(object):
 
             self.state[index_now:(index_now+geshu_single)] = state_list[:]
             index_now = index_now + geshu_single 
+        
+        # then, gloable 地形，which is important 的东西.
+        state_terrain, geshu_terrain = self.get_state_global_terrain()
+        self.state[index_now:(index_now+geshu_terrain)] = state_terrain[:]
 
-        # then transfer.  ? it seems not xuyao. 
+        # then transfer.  ? it seems not 需要. 
             
         return self.state
+
+    def add_actions(self, action_dict):
+        # 这个试图来一个比较阳间的“从已有的命令中过滤掉特定ID的命令，然后把需要执行的命令加到其中去”的函数。
+        # 应该能够有助于scout赛道和defend赛道发命令。
+
+        # 先过滤一下
+        print("unfinished yet")
+        pass
+
+    def filter_action(self, ID, **kargs):
+        # 过滤命令的独立出来一个好了.
+        # TODO: filter by type or other keys
+        act_new = []
+        for act_single in self.act:
+            if act_single["obj_id"] != ID:
+                act_new.append(act_single)
+        return act_new
+
 
     def calculate_reward_cross_fire(self):
         # calculate the rl reward according to self.act and status.
@@ -258,7 +340,19 @@ class EnvForRL(object):
             self.reward = self.reward + reward_single
 
         return self.reward 
-    
+
+    def calculate_reward_scout(self):
+        # calculate the rl reward according to self.act and status.
+        # 尚霖琢磨一下这部分罢，reward咋定一定程度上是关系成败的
+        rewrad_list = [] 
+        print("unfinished yet")
+
+    def calculate_reward_defend(self):
+        # calculate the rl reward according to self.act and status.
+        # 子航琢磨一下这部分罢，reward咋定一定程度上是关系成败的
+        rewrad_list = [] 
+        print("unfinished yet")
+
     def step(self, action):
         # 
         # get the target first.
@@ -269,9 +363,9 @@ class EnvForRL(object):
 
         self.state =self.get_state(self.state_dict[self.red_flag])
 
-        # call agent_guize, 
-        self.agent_guize.step(self.state_dict[self.red_flag], model="RL")
-        self.num = self.agent_guize.num
+        # call agent, 
+        self.agent.step(self.state_dict[self.red_flag], model="RL")
+        self.num = self.agent.num
         self.step_num = self.step_num + 1 
         
         # there must be some dim to indictate if a unit should be forced stop and change target.
@@ -279,7 +373,7 @@ class EnvForRL(object):
         action_real = action
         self.command_tank(action_real)
         # then generate self.act. 
-        self.act = self.agent_guize.Gostep_abstract_state()
+        self.act = self.agent.Gostep_abstract_state()
 
         # then generate action dict 
         action_dict = self.act
@@ -313,10 +407,10 @@ class EnvForRL(object):
 
     def shadow_step(self):
         # 这个用来实现"不发RL指令单纯空跑几帧规则",不然一个episode好几千步,就寄了
-        self.agent_guize.step(self.state_dict[self.red_flag], model="guize")
-        self.num = self.agent_guize.num
+        self.agent.step(self.state_dict[self.red_flag], model="guize")
+        self.num = self.agent.num
         # then generate self.act. 
-        self.act = self.agent_guize.Gostep_abstract_state()
+        self.act = self.agent.Gostep_abstract_state()
         action_dict = self.act
         state, done = self.env.step(action_dict)
         self.all_states.append(state[self.white_flag])
@@ -329,9 +423,9 @@ class EnvForRL(object):
         units = self.state_dict[self.red_flag]["operators"]
         if action_real[0] > 0:
             # which means it should be stopped and go another pos.
-            IFV_units = self.agent_guize.get_IFV_units()
-            infantry_units = self.agent_guize.get_infantry_units()
-            UAV_units = self.agent_guize.get_UAV_units()
+            IFV_units = self.agent.get_IFV_units()
+            infantry_units = self.agent.get_infantry_units()
+            UAV_units = self.agent.get_UAV_units()
             tank_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
 
             pos_ave_tank = get_pos_average(tank_units)
@@ -340,17 +434,39 @@ class EnvForRL(object):
             xy_new = np.array(action_real[1:3]) + hex_to_xy(pos_ave_tank)
             hex_new = xy_to_hex(xy_new)
             
-            self.agent_guize.group_A(tank_units,hex_new,model="force")
+            self.agent.group_A(tank_units,hex_new,model="force")
             pass
         else:
             # which means it should not change.
             print("AI thinks nothing should happen.")
             pass 
-    
+
+    def command_scout_demo(self, action_real):
+        # 这面实现“怎么把智能体那边拿来的指令生成为self.act里面的动作”
+        act_RL = self.agent._move_action(0,1145)
+        """
+            command
+        """
+
+        self.act = self.filter_action(0)
+        self.act = self.add_actions(act_RL[-1])
+        print("unfinished yet")    
+
+    def command_defend_demo(self, action_real):
+        # 这面实现“怎么把智能体那边拿来的指令生成为self.act里面的动作”
+        act_RL = self.agent._move_action(0,1145)
+        """
+            command
+        """
+
+        self.act = self.filter_action(0)
+        self.act = self.add_actions(act_RL[-1])
+        print("unfinished yet")    
 
     def render(self):
         print("unfinished yet")
         pass
+
     def Gostep(self):
         # 这个是把那些要维护状态的那些事情都搞进来。
         # 所有改act的东西都应该统一经过这里面。

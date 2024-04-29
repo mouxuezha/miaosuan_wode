@@ -291,15 +291,18 @@ class Map:
                     return 0
                 else:  # target_type == BopType.Vehicle
                     return 1
+                
+        def idx2hex(idx):
+            return idx // self.max_col * 100 + idx % self.max_col
 
         mode = get_ob_mode(unit_type, target_type)
         idx = center // 100 * self.max_col + center % 100
         if passive:
-            ob_area = np.where(self.ob[mode][:, idx])[0]
+            ob_area_idx = np.where(self.ob[mode][:, idx])[0]
         else:
-            ob_area = np.where(self.ob[mode][idx, :])[0]
-        ob_area = np.append(ob_area, center)
-        ob_area = set(ob_area)
+            ob_area_idx = np.where(self.ob[mode][idx, :])[0]
+        ob_area_hex = [idx2hex(x) for x in ob_area_idx]
+        ob_area = set(ob_area_hex)
         if constrain_area:
             ob_area &= constrain_area
         return ob_area
