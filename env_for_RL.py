@@ -8,9 +8,10 @@ import zipfile
 import time
 import copy
 from transfer import transfer
-from agent import * 
-from tools import *
+from ai.agent import *
+from ai.tools import *
 import numpy as np
+import time 
 
 sys.path.append("/home/vboxuser/Desktop/miaosuan/starter-kit")
 from ai.map import Map
