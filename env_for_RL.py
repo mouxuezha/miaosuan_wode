@@ -25,7 +25,7 @@ class EnvForRL(object):
 
         self.__init_dim()  # 设定state和actor维数和上下游各种东西
 
-        self.state = np.zeros(self.state_dim,) 
+        self.state = self.reset_state() 
         self.action = np.zeros(self.action_dim,)  
         self.reward = 0 
         self.done = False  
@@ -50,6 +50,7 @@ class EnvForRL(object):
         self.blue_obs_dim = 1919810
         self.state_dim = self.red_obs_dim + 1  # temp set  # 多出一个维度的时间戳。
         # self.state_dim = len(self.red_ID) * 2 + len(self.blue_ID) * 2  
+        self.obj_num_real = 16+3 
               
     def __init_crossfire(self):
         # from ai.agent import Agent
@@ -134,15 +135,15 @@ class EnvForRL(object):
     def reset(self):
         self.__init_crossfire()
         # self.env.reset() # use theirs.
-        self.state = np.zeros(self.state_dim,) 
+        self.state = self.reset_state() 
         self.action = np.zeros(self.action_dim,)  
     
     def get_altitude(self,target_pos):
         xy_single = hex_to_xy(target_pos)
         # qian2wei = round(target_pos / 100)
         # hou2wei = target_pos - qian2wei*100 
-        qian2wei = xy_single[1]
-        hou2wei = xy_single[0]
+        qian2wei = int(xy_single[1])
+        hou2wei = int(xy_single[0])
         map_data_single = self.map_data[qian2wei][hou2wei]
         altitude_single = map_data_single['elev']
         # print("get_altitude need debug")
@@ -152,8 +153,8 @@ class EnvForRL(object):
         xy_single = hex_to_xy(target_pos)
         # qian2wei = round(target_pos / 100)
         # hou2wei = target_pos - qian2wei*100 
-        qian2wei = xy_single[1]
-        hou2wei = xy_single[0]
+        qian2wei = int(xy_single[1])
+        hou2wei = int(xy_single[0])
         map_data_single = self.map_data[qian2wei][hou2wei]
         terrain_single = map_data_single['cond']
         # print("get_terrain need debug")
@@ -173,26 +174,27 @@ class EnvForRL(object):
         weapon_CD = unit["weapon_cool_time"]
         state_list = [sub_type,xy_single[0],xy_single[1], alt_single, keep_remain_time, speed, weapon_CD]
 
-        # hex_around = self.map.get_neighbors(hex_absolute)
-        distance_start = 0 
-        distance_end = 2 
-        hex_around = self.map.get_grid_distance(hex_absolute,distance_start,distance_end)
+        # # hex_around = self.map.get_neighbors(hex_absolute)
+        # distance_start = 0 
+        # distance_end = 2 
+        # hex_around = self.map.get_grid_distance(hex_absolute,distance_start,distance_end)
 
-        for hex_around_single_abs in hex_around:
-            # hex_around_single = hex_around[i] - self.target_pos
-            hex_around_single = hex_around_single_abs - self.target_pos
-            # use relative hex.
-            xy_around_single = hex_to_xy(hex_around_single)
-            if hex_around_single_abs >0:
-                alt_around_single = self.get_altitude(hex_around_single_abs)
-            else:
-                alt_around_single = -1 
-                xy_around_single = [-100,-100] 
-            try:
-                threaten_field_single = self.agent.threaten_field[hex_around_single_abs] 
-            except KeyError:
-                threaten_field_single = 0 
-            state_list = state_list + [xy_around_single[0],xy_around_single[1],alt_around_single,threaten_field_single]
+        # for hex_around_single_abs in hex_around:
+        #     # hex_around_single = hex_around[i] - self.target_pos
+        #     hex_around_single = hex_around_single_abs - self.target_pos
+        #     # use relative hex.
+        #     xy_around_single = hex_to_xy(hex_around_single)
+        #     if hex_around_single_abs >0:
+        #         alt_around_single = self.get_altitude(hex_around_single_abs)
+        #     else:
+        #         alt_around_single = -1 
+        #         xy_around_single = [-100,-100] 
+        #     try:
+        #         threaten_field_single = self.agent.threaten_field[hex_around_single_abs] 
+        #     except KeyError:
+        #         threaten_field_single = 0 
+        #     state_list = state_list + [xy_around_single[0],xy_around_single[1],alt_around_single,threaten_field_single]
+        
         geshu = len(state_list)
 
         return state_list, geshu
@@ -201,14 +203,18 @@ class EnvForRL(object):
         # 全局地形，只在一开始记录一次，后面就反正往里塞进去就是了。
         if self.num <2:
             # 说明是第一次。把地形数据的区域取出来
-            pos_ave = self.agent.get_pos_average(self.agent.status["operators"])
-            pos_center = self.agent.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
+            if self.num == 0:
+                pos_center = self.target_pos
+            else:
+                pos_ave = self.agent.get_pos_average(self.agent.status["operators"])
+                pos_center = self.agent.get_pos_average([pos_ave, self.target_pos], model="input_hexs")
             
             if "area" in kargs:
                 area = kargs["area"]
             else:
                 area = self.map.get_grid_distance(pos_center, 0, 30)
             state_terrain = [] 
+            area = list(area)
             for i in range(len(area)):
                 xy_single = hex_to_xy(area[i])
                 dixing_single = self.get_terrain(area[i])
@@ -225,15 +231,18 @@ class EnvForRL(object):
         geshu = len(state_terrain)
         return state_terrain, geshu
         print("unfinished yet")
-            
+
+    def reset_state(self):
+        self.state = np.zeros(self.state_dim,) - 1 
+        return  self.state     
     def get_state(self, state_dict):
         # get state_real from state_dict,
+        self.state = self.reset_state() 
 
         index_now = 0  # shoudong laige zhizheng      
         self.state[index_now] = self.target_pos
         index_now = index_now + 1  
         
-        self.state = np.zeros(self.state_dim,)
         # reset the self.state to avoid dimension dismatch. 
 
         # first, enemy obj state.
@@ -250,6 +259,26 @@ class EnvForRL(object):
         #     self.state[index_now:(index_now+geshu_single)] = state_list[:]
         #     index_now = index_now + geshu 
         
+      
+        # then, my obj states, which include detected enemy units.
+        # state_dict_my = state_dict
+        my_obj_IDs = get_ID_list(state_dict) 
+        units_my = self.agent.select_by_type(state_dict["operators"],key="color",value=0)
+        geshu_real = min((self.red_obj_num+self.blue_obj_num),len(my_obj_IDs))
+        geshu_max = self.obj_num_real
+        for i in range(geshu_max):
+            if i < geshu_real:
+                ID = my_obj_IDs[i]
+                unit = get_bop(ID,units=units_my)
+                state_list, geshu_single = self.get_state_unit(unit)
+
+                self.state[index_now:(index_now+geshu_single)] = state_list[:]
+                index_now = index_now + geshu_single 
+            else:
+                # no such thing, void 
+                geshu_single = 7 # it depends on the implementation of self.get_state_unit.
+                self.state[index_now:(index_now+geshu_single)] = 0
+        
         # first, enemy obj state. using self.detected_state
         units_enemy = self.agent.detected_state
         for i in range(self.enemy_num_max):
@@ -260,19 +289,8 @@ class EnvForRL(object):
                 self.state[index_now:(index_now+geshu_single)] = state_list[:]
             except:
                 # 没探到，就用默认值。
-                self.state[index_now:(index_now+geshu_single)] = 0
-        
-        # then, my obj states, which include detected enemy units.
-        state_dict_my = state_dict
-        my_obj_IDs = get_ID_list(state_dict_my) 
-        geshu = min((self.red_obj_num+self.blue_obj_num),len(my_obj_IDs))
-        for i in range(geshu):
-            ID = my_obj_IDs[i]
-            unit = get_bop(ID,status=state_dict_my)
-            state_list, geshu_single = self.get_state_unit(unit)
-
-            self.state[index_now:(index_now+geshu_single)] = state_list[:]
-            index_now = index_now + geshu_single 
+                geshu_single = 7 # it depends on the implementation of self.get_state_unit.
+                self.state[index_now:(index_now+geshu_single)] = 0        
         
         # then, gloable 地形，which is important 的东西.
         state_terrain, geshu_terrain = self.get_state_global_terrain()
@@ -285,9 +303,9 @@ class EnvForRL(object):
     def add_actions(self, action_dict):
         # 这个试图来一个比较阳间的“从已有的命令中过滤掉特定ID的命令，然后把需要执行的命令加到其中去”的函数。
         # 应该能够有助于scout赛道和defend赛道发命令。
-
+        self.act = self.act + action_dict
         # 先过滤一下
-        print("unfinished yet")
+        # print("unfinished yet")
         pass
 
     def filter_action(self, ID, **kargs):
@@ -298,7 +316,6 @@ class EnvForRL(object):
             if act_single["obj_id"] != ID:
                 act_new.append(act_single)
         return act_new
-
 
     def calculate_reward_cross_fire(self):
         # calculate the rl reward according to self.act and status.
