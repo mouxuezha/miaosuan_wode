@@ -35,7 +35,7 @@ class EnvForRL(object):
         self.shadow_step_range = [0, 1000, 2000, 3000, 1145141919]
         # 整点花的，安排一个动态的。按说粗细粒度一起来的话应该要多多区分一点儿才是。
         self.step_num_real = 0
-        self.max_step = 8208820
+        self.max_step = 2800
 
     def __init_folder(self):
         # 这些路径.使用的时候根据实际情况改改吧,先硬编码了
@@ -46,7 +46,7 @@ class EnvForRL(object):
 
     def __init_dim(self):
         self.action_dim = 2
-        self.red_obs_dim = 114514
+        self.red_obs_dim = 3038
         self.blue_obs_dim = 1919810
         self.state_dim = self.red_obs_dim + 1  # temp set  # 多出一个维度的时间戳。
         # self.state_dim = len(self.red_ID) * 2 + len(self.blue_ID) * 2  
@@ -134,6 +134,8 @@ class EnvForRL(object):
     
     def reset(self):
         self.__init_crossfire()
+        self.num = 0 # num in simulation 
+        print("EnvForRL resetted")
         # self.env.reset() # use theirs.
         self.state = self.reset_state() 
         self.action = np.zeros(self.action_dim,)  
@@ -212,7 +214,7 @@ class EnvForRL(object):
             if "area" in kargs:
                 area = kargs["area"]
             else:
-                area = self.map.get_grid_distance(pos_center, 0, 30)
+                area = self.map.get_grid_distance(pos_center, 0, 15)
             state_terrain = [] 
             area = list(area)
             for i in range(len(area)):
@@ -273,11 +275,11 @@ class EnvForRL(object):
                 state_list, geshu_single = self.get_state_unit(unit)
 
                 self.state[index_now:(index_now+geshu_single)] = state_list[:]
-                index_now = index_now + geshu_single 
             else:
                 # no such thing, void 
                 geshu_single = 7 # it depends on the implementation of self.get_state_unit.
                 self.state[index_now:(index_now+geshu_single)] = 0
+            index_now = index_now + geshu_single 
         
         # first, enemy obj state. using self.detected_state
         units_enemy = self.agent.detected_state
@@ -290,12 +292,13 @@ class EnvForRL(object):
             except:
                 # 没探到，就用默认值。
                 geshu_single = 7 # it depends on the implementation of self.get_state_unit.
-                self.state[index_now:(index_now+geshu_single)] = 0        
+                self.state[index_now:(index_now+geshu_single)] = 0    
+            index_now = index_now + geshu_single     
         
         # then, gloable 地形，which is important 的东西.
         state_terrain, geshu_terrain = self.get_state_global_terrain()
         self.state[index_now:(index_now+geshu_terrain)] = state_terrain[:]
-
+        index_now = index_now + geshu_terrain 
         # then transfer.  ? it seems not 需要. 
             
         return self.state
@@ -343,7 +346,7 @@ class EnvForRL(object):
 
         # then, reward for shoot.
         act_shoot = select_by_type(self.act,key="type",value=2) # shoot
-        act_guided = select_by_type(self.act,key="type",value=2) # shoot
+        act_guided = select_by_type(self.act,key="type",value=9) # shoot
         reward_fire = (len(act_shoot) + len(act_guided)) * 0.5 
         rewrad_list.append(reward_fire)
 
@@ -495,7 +498,7 @@ if __name__ == "__main__":
     if flag == 0:
         print("EnvForRL: testing")
         shishi_env = EnvForRL()
-        step_num_max = shishi_env.max_step
+        step_num_max = round(shishi_env.max_step /shishi_env.shadow_step_num[0] )
 
         shishi_env.reset()
         for i in range(step_num_max):
@@ -503,5 +506,12 @@ if __name__ == "__main__":
             random_action = (np.random.random((3,)) - 0.5) * 2
             # random_action[0]=np.random.randint(0,1)
             random_action[0] = 1
-            shishi_env.step(random_action)
+            state, reward, is_done, info = shishi_env.step(random_action)
+            if is_done:
+                print("EnvForRL: episode done")
+                break
+            print("EnvForRL: step_num:",i)
+            # print("EnvForRL: state:",state)
+            # print("EnvForRL: reward:",reward)
+            # print("EnvForRL: is_done:",is_done)
         print("EnvForRL: 起码跑起来了")    

@@ -179,7 +179,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             return      
         # 先取一下“周围的威胁较少的点“
         pos_around_set = set()
-        distance_start = 0
+        distance_start = 1
         distance_end = 1 
         for unit in units_VIP:
             pos_single = unit["cur_hex"]

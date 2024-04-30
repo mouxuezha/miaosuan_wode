@@ -1332,7 +1332,7 @@ class BaseAgent(ABC):
 
         # 选定所有单位周围的两个格子，然后去重 # 算了一个格子吧，两个也没啥用反正
         distance_start = 0 
-        distance_end = 1
+        distance_end = 2
         ID_list = self.get_ID_list(self.status)
         pos_set = set() 
         for attacker_ID in ID_list:
