@@ -14,7 +14,8 @@ import csv
 from typing import List, Optional
 from numpy import ndarray
 from torch.distributions import Categorical
-from log import log
+# from log import log # no such module
+import logging 
 import pickle
 
 class Actor(nn.Module):
@@ -190,15 +191,15 @@ class ReplayBuffer(object):
         # xxh试着加的，不保熟。
         return self.current_size
 
-    def save_buffer(self,folder=r"E:\XXH\RLtraining" ):
+    def save_buffer(self,folder=r"./RLtraining" ):
         # 存和读取都是很关键的，不然后面直接无法调试了。
-        file_name = folder + r'\buffer.pkl'
+        file_name = folder + r'/buffer.pkl'
         file = open(file_name, "wb")
         pickle.dump(self.buffers, file)
         file.close()
 
-    def load_buffer(self, folder=r"E:\XXH\RLtraining" ):
-        file_name = folder + r'\buffer.pkl'
+    def load_buffer(self, folder=r"./RLtraining" ):
+        file_name = folder + r'/buffer.pkl'
         file = open(file_name, "rb")
         self.buffers = pickle.load(file)
         file.close()
@@ -471,6 +472,12 @@ class TD3Learner:
         # xxh1014不保熟，把环境弄进来了。
         self.env = config["env"]
 
+        # xxh 0502, can not find "log", using logging instead.
+        
+        self.log = logging.getLogger("TD3Learner")
+        logging.basicConfig(filename="TD3_log.log",level=logging.INFO)
+
+
     def prepare(self, **env_params):
 
         # xxh 1014，不保熟。
@@ -634,10 +641,14 @@ class TD3Learner:
             if is_done:
                 break
 
-        log(topic="训练",
-            metrics={"actor_loss": float(total_actor_loss / self.learn_times),
-                "critic_loss": float(total_critic_loss / self.learn_times),},)
+        # log(topic="训练",
+        #     metrics={"actor_loss": float(total_actor_loss / self.learn_times),
+        #         "critic_loss": float(total_critic_loss / self.learn_times),},)
 
+        # praise CodeGeeX.
+        self.log.info("actor_loss = {}, critic_loss = {}".format(
+            total_actor_loss / self.learn_times, total_critic_loss / self.learn_times))
+        
         send_message = dict()
         send_message["actor_net"] = self.actor_net
         send_message["critic_net"] = self.critic_net
@@ -712,13 +723,18 @@ class TD3Learner:
                 np.average(info["episodes_rewards"]),
             )
         )
-        log(
-            topic="评估",
-            metrics={
-                "average_reward": np.average(info["episodes_rewards"]),
-            },
+        # log(
+        #     topic="评估",
+        #     metrics={
+        #         "average_reward": np.average(info["episodes_rewards"]),
+        #     },
+        # )
+        self.log.info(
+            "learn steps = {}, average_reward = {}".format(
+                self.learn_steps,
+                np.average(info["episodes_rewards"]),
+            )
         )
-
     def _get_max_episode_len(self, batch):
         terminated = batch["terminated"]
         episode_num = terminated.shape[0]

@@ -23,8 +23,6 @@ class EnvForRL(object):
 
         self.__init_crossfire()
 
-        self.__init_dim()  # 设定state和actor维数和上下游各种东西
-
         self.state = self.reset_state() 
         self.action = np.zeros(self.action_dim,)  
         self.reward = 0 
@@ -43,14 +41,7 @@ class EnvForRL(object):
         # self.log_folder = '/home/vboxuser/Desktop/miaosuan/miaosuan_wode/'       
         self.log_file = './RLtrainning/overall_result.txt'
         self.log_folder = './RLtrainning/'  
-
-    def __init_dim(self):
-        self.action_dim = 2
-        self.red_obs_dim = 3038
-        self.blue_obs_dim = 1919810
-        self.state_dim = self.red_obs_dim + 1  # temp set  # 多出一个维度的时间戳。
-        # self.state_dim = len(self.red_ID) * 2 + len(self.blue_ID) * 2  
-        self.obj_num_real = 16+3 
+        
               
     def __init_crossfire(self):
         # from ai.agent import Agent
@@ -65,10 +56,14 @@ class EnvForRL(object):
         self.blue_flag = 1
         self.white_flag = -1   
 
-        self.red_obj_num = 16 # need debug.
-        self.blue_obj_num = 4 
-        self.enemy_num_max = 3 
-        
+        self.action_dim = 2
+        self.red_obj_num_max = 16 
+        self.blue_obj_num_max = 3 
+        self.obj_num_real = self.red_obj_num_max + self.blue_obj_num_max
+        self.red_obs_dim = self.red_obj_num_max * 7 
+        self.blue_obs_dim = self.blue_obj_num_max * 7 
+        self.state_dim = self.red_obs_dim+ self.blue_obs_dim + 1  # temp set  # 多出一个维度的时间戳。
+        # self.state_dim = len(self.red_ID) * 2 + len(self.blue_ID) * 2          
         # self.get_target_cross_fire() 
 
         # varialbe to build replay
@@ -138,7 +133,8 @@ class EnvForRL(object):
         print("EnvForRL resetted")
         # self.env.reset() # use theirs.
         self.state = self.reset_state() 
-        self.action = np.zeros(self.action_dim,)  
+        self.action = np.zeros(self.action_dim,) 
+        return self.state
     
     def get_altitude(self,target_pos):
         xy_single = hex_to_xy(target_pos)
@@ -236,7 +232,8 @@ class EnvForRL(object):
 
     def reset_state(self):
         self.state = np.zeros(self.state_dim,) - 1 
-        return  self.state     
+        return self.state  
+       
     def get_state(self, state_dict):
         # get state_real from state_dict,
         self.state = self.reset_state() 
@@ -246,28 +243,14 @@ class EnvForRL(object):
         index_now = index_now + 1  
         
         # reset the self.state to avoid dimension dismatch. 
-
-        # first, enemy obj state.
-        # it is not correct. we can not use undetected enemy_obj information.  
-        # 0, me. 1 enemy. -1, all.
-        # state_dict_enemy = state_dict[1]
-        # enemy_obj_IDs = get_ID_list(state_dict_enemy)
-        # geshu = min(self.blue_obj_num,len(enemy_obj_IDs))
-        # for i in range(geshu):
-        #     ID = enemy_obj_IDs[i]
-        #     unit = get_bop(ID)
-        #     state_list, geshu_single = self.get_state_unit(unit)
-
-        #     self.state[index_now:(index_now+geshu_single)] = state_list[:]
-        #     index_now = index_now + geshu 
         
       
         # then, my obj states, which include detected enemy units.
         # state_dict_my = state_dict
         my_obj_IDs = get_ID_list(state_dict) 
         units_my = self.agent.select_by_type(state_dict["operators"],key="color",value=0)
-        geshu_real = min((self.red_obj_num+self.blue_obj_num),len(my_obj_IDs))
-        geshu_max = self.obj_num_real
+        geshu_real = min((self.red_obj_num_max +self.blue_obj_num_max),len(my_obj_IDs))
+        geshu_max = self.red_obj_num_max
         for i in range(geshu_max):
             if i < geshu_real:
                 ID = my_obj_IDs[i]
@@ -283,7 +266,7 @@ class EnvForRL(object):
         
         # first, enemy obj state. using self.detected_state
         units_enemy = self.agent.detected_state
-        for i in range(self.enemy_num_max):
+        for i in range(self.blue_obj_num_max):
             try:
                 unit = units_enemy[i]
                 state_list, geshu_single = self.get_state_unit(unit)

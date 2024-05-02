@@ -124,7 +124,7 @@ if __name__ == "__main__":
     
     # 思路打开，也不是说非要gym不可，心中有gym，到处都是gym
 
-    flag = 1
+    flag = 0
     if flag == 0:
         while(True):
             config = get_defualt_value()
