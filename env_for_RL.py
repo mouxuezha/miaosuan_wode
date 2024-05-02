@@ -295,10 +295,11 @@ class EnvForRL(object):
                 self.state[index_now:(index_now+geshu_single)] = 0    
             index_now = index_now + geshu_single     
         
-        # then, gloable 地形，which is important 的东西.
-        state_terrain, geshu_terrain = self.get_state_global_terrain()
-        self.state[index_now:(index_now+geshu_terrain)] = state_terrain[:]
-        index_now = index_now + geshu_terrain 
+        # # then, gloable 地形，which is important 的东西.
+        # state_terrain, geshu_terrain = self.get_state_global_terrain()
+        # self.state[index_now:(index_now+geshu_terrain)] = state_terrain[:]
+        # index_now = index_now + geshu_terrain 
+        # # 这个维度数太多了，先关了一下，等需要的时候再开。
         # then transfer.  ? it seems not 需要. 
             
         return self.state
