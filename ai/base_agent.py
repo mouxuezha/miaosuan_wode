@@ -688,8 +688,8 @@ class BaseAgent(ABC):
         # then merge 
         qianpai_units = xiaoche_units + IFV_units_empty
 
-        # if len(qianpai_units)==0:
-        #     qianpai_units = IFV_units
+        if len(qianpai_units)==0:
+            qianpai_units = IFV_units
         return qianpai_units
 
     def filter_arrived_units(self,units):
@@ -711,6 +711,11 @@ class BaseAgent(ABC):
         move_type = self.get_move_type(bop)
         route = self.map.gen_move_route(bop["cur_hex"], target_pos, move_type)
         
+        # 暴力一点，如果有空的路径，就直接往点里去了。
+        if self.num > 800:
+            if len(route)==0:
+                route = self.map.gen_move_route(bop["cur_hex"], self.target_pos, move_type)
+
         action_move =  {
                 "actor": self.seat,
                 "obj_id": attacker_ID,
@@ -1327,7 +1332,7 @@ class BaseAgent(ABC):
 
         # 选定所有单位周围的两个格子，然后去重 # 算了一个格子吧，两个也没啥用反正
         distance_start = 0 
-        distance_end = 1
+        distance_end = 2
         ID_list = self.get_ID_list(self.status)
         pos_set = set() 
         for attacker_ID in ID_list:
@@ -1392,7 +1397,8 @@ class BaseAgent(ABC):
                 if jvli>2:
                     field_value = field_value + 0 
                 else:
-                    field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
+                    # field_value =field_value + -1*a1*0.2 / (a2 + 1 + jvli)
+                    field_value =field_value + +1*a1*0.2 / (a2 + 1 + jvli)
 
         #  using tongshi to modify the field further.
         # 如果已经算过了，就别重新算一遍这个了。

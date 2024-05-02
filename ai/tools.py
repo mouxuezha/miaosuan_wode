@@ -74,9 +74,12 @@ def get_bop(obj_id, **kargs):
         # 这个实现好像有点那啥，循环里带循环的，后面看看有没有机会整个好点的。xxh0307
         if "status" in kargs:
             observation = kargs["status"]
+            units = observation["operators"]
+        elif "units" in kargs:
+             units = kargs["units"]
         else:
             raise Exception("no input status, G.")
-        for bop in observation["operators"]:
+        for bop in units:
             if obj_id == bop["obj_id"]:
                 return bop
 
