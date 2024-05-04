@@ -64,7 +64,14 @@ class EnvForRL(object):
         self.blue_obs_dim = self.blue_obj_num_max * 7 
         self.state_dim = self.red_obs_dim+ self.blue_obs_dim + 1  # temp set  # 多出一个维度的时间戳。
         # self.state_dim = len(self.red_ID) * 2 + len(self.blue_ID) * 2          
-        # self.get_target_cross_fire() 
+        # self.get_target_cross_fire()
+
+        # define some transfer functions
+        higher_action_real = [5,5]
+        lower_action_real = [-5,-5]
+        higher_action_norm = [1,1]
+        lower_action_norm = [-1,-1] 
+        self.action_transfer = transfer(higher_state_real = higher_action_real, higher_state_norm = higher_action_norm,lower_state_real = lower_action_real,lower_state_norm = lower_action_norm)
 
         # varialbe to build replay
         self.all_states = [] 
@@ -134,6 +141,22 @@ class EnvForRL(object):
         # self.env.reset() # use theirs.
         self.state = self.reset_state() 
         self.action = np.zeros(self.action_dim,) 
+        self.agent.reset(model="RL")
+        ai_user_name = 'myai'
+        ai_user_id = 1
+        self.agent.setup(
+            {
+                "scenario": self.env.scenario_data,
+                "basic_data": self.env.basic_data,
+                "cost_data": self.env.cost_data,
+                "see_data": self.env.see_data,
+                "seat": 1,
+                "faction": 0,
+                "role": 0,
+                "user_name": ai_user_name,
+                "user_id": ai_user_id,
+            }
+        )
         return self.state
     
     def get_altitude(self,target_pos):
@@ -375,8 +398,10 @@ class EnvForRL(object):
         
         # there must be some dim to indictate if a unit should be forced stop and change target.
         # then overwrite some abstract_state 
-        action_real = action
-        self.command_tank(action_real)
+        action_real = self.action_transfer.norm_to_real(action)
+        self.command_tank2(action_real)
+        # action_real = action
+        # self.command_tank(action_real)
         # then generate self.act. 
         self.act = self.agent.Gostep_abstract_state()
 
@@ -445,6 +470,25 @@ class EnvForRL(object):
             # which means it should not change.
             print("AI thinks nothing should happen.")
             pass 
+
+    def command_tank2(self,action_real):
+        # updated, no more stop, just turning. so no more stop flag.
+        units = self.state_dict[self.red_flag]["operators"]
+        IFV_units = self.agent.get_IFV_units()
+        infantry_units = self.agent.get_infantry_units()
+        UAV_units = self.agent.get_UAV_units()
+        tank_units = [unit for unit in units if (unit not in IFV_units) and (unit not in infantry_units) and (unit not in UAV_units)]
+
+        pos_ave_tank = get_pos_average(tank_units)
+            
+        # xy_new = np.array(action_real[1:3]) + hex_to_xy(self.target_pos)
+        xy_new = np.array(action_real[0:2]) + hex_to_xy(pos_ave_tank)
+        try:
+            hex_new = xy_to_hex(xy_new)
+        except:
+            hex_new = pos_ave_tank
+            
+        self.agent.group_A(tank_units,hex_new,model="force")        
 
     def command_scout_demo(self, action_real):
         # 这面实现“怎么把智能体那边拿来的指令生成为self.act里面的动作”

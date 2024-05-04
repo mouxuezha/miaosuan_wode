@@ -596,6 +596,9 @@ class TD3Learner:
             is_done = self.interaction_with_env(self.env, state)
             buffer_size = self.buffer.get_current_size()
             if buffer_size<self.start_buffer_size:
+                if is_done == True:
+                    print("buffer is not full, but the episode is done. ")
+                    break
                 continue  # 不慌开始训练，先把buffer填了。
 
 
@@ -979,7 +982,7 @@ class TD3Learner:
         # state_tensor.to(torch.double)
         state_tensor = state_tensor.float()
         action_raw = self.actor_net(state_tensor)
-        random_noise = (np.random.random((len(action_raw),)) - 0.5) * 2  # TODO 按说应该加点更专业的噪音，下次一定
+        random_noise = (np.random.random((len(action_raw),)) - 0.5)  # TODO 按说应该加点更专业的噪音，下次一定
         # 20240429，下次也不一定
 
         action = action_raw.detach().numpy() + random_noise

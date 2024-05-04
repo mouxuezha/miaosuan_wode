@@ -92,15 +92,17 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             TaskType.Scout: ScoutExecutor(),
             TaskType.Defend: DefendExecutor(),
         }
-    def reset(self):
-        self.scenario = None
-        self.color = None
-        self.priority = None
-        self.observation = None
-        self.map = None
-        self.scenario_info = None
-        self.map_data = None
-
+    def reset(self,model="nomal"):
+        if model == "normal":
+            self.scenario = None
+            self.color = None
+            self.priority = None
+            self.observation = None
+            self.map = None
+            self.scenario_info = None
+            self.map_data = None
+        elif model == "RL":
+            self.observation = None
         self.num = 0 
 
     def time_decorator(func):

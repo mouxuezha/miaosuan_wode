@@ -39,7 +39,7 @@ def get_defualt_value():
     config["store_episode_rewards"] = False
     config["store_buffer"] = True
     config["max_store_buffer_count"] = 1
-    config["results_path"] = "./RLtraining\models"
+    config["results_path"] = "./RLtraining/models"
     config["load_model"] = False
     config["save_filename"] = 'latest'
     config["load_filename"] = 'latest'

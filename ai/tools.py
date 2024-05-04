@@ -127,7 +127,7 @@ def get_pos_average(units):
             # pos_ave = (pos_ave/(i+0.000001) + self.get_pos(units[i]["obj_id"])) / (i+1)
             pos_sum = pos_sum + get_pos(units[i])
         
-        pos_ave = round(pos_sum / geshu + 0.0001)
+        pos_ave = round(pos_sum / (geshu + 0.0001))
         return pos_ave
 
 
