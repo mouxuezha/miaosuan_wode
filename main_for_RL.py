@@ -26,7 +26,7 @@ def get_defualt_value():
     config["max_train_steps"] = 100000
     config["batch_size"] = 160
     config["target_update_cycle"] = 50
-    config["update_policy_cycle"] = 50
+    config["update_policy_cycle"] = 5
     config["save_cycle"] = 100
     config["evaluate_episodes"] = 16
     config["evaluate_cycle"] = 10

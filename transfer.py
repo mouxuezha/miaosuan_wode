@@ -52,10 +52,12 @@ class transfer(object):
         for i in range(self.dim):
             if state_real[i] > self.higher_state_real[i]:
                 state_real[i] = self.higher_state_real[i]
+                flag_clipped = False
             elif state_real[i] < self.lower_state_real[i]:
                 state_real[i] = self.lower_state_real[i]
+                flag_clipped = False
             else:
-                flag_clipped = True
+                flag_clipped = False
 
         if flag_clipped:
             print("transfer: attenstion, state_real clipped.")
@@ -67,10 +69,12 @@ class transfer(object):
         for i in range(self.dim):
             if state_norm[i] > self.higher_state_norm[i]:
                 state_norm[i] = self.higher_state_norm[i]
+                flag_clipped = True
             elif state_norm[i] < self.lower_state_norm[i]:
                 state_norm[i] = self.lower_state_norm[i]
-            else:
                 flag_clipped = True
+            else:
+                flag_clipped = False
         if flag_clipped:
             print("transfer: attenstion, state_norm clipped.")
 
