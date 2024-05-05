@@ -85,8 +85,10 @@ def auto_run_RL(location = r"./RLtraining"):
         agent = TD3Learner(**config)
 
         agent.prepare(**env_params)
-
-        agent.train_auto()
+        try:
+            agent.train_auto()
+        except:
+            print("sdk seems G, just save and contibue")
 
 def generate_location(location = r"./RLtraining", name="models", **kargs):
 

@@ -665,7 +665,13 @@ class TD3Learner:
             print("start number "+str(episode_now) + " episode. ")
             # self.reset()
             # 不对，每个episode里面应该是不能reset的。
-            self.train()
+            try:
+                self.train()
+            except Exception as e:
+                print("train error: " + str(e))
+                # 保存模型
+                self._save_policy(self.runs_path, "latest")
+                self.reset()
 
     def reset(self):
         # 重置一下各种东西，包括路径什么的，让它能够真正意义上地重新算下一个

@@ -14,3 +14,6 @@ the link of this this game: http://turingai.ia.ac.cn/data_center/show/10
 xzbs的：
 http://wargame.ia.ac.cn/eventDetail?eventId=89
 http://wargame.ia.ac.cn/gitlab/xz2024/starter-kit
+
+------------RL_trying:------------
+run main_for_RL.py, then it will call env_for_RL.py and alg_TD3.py
