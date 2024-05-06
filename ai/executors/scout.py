@@ -447,11 +447,11 @@ class ScoutExecutor:
             area_cur = self.can_you_shoot_me(agent, self.units[missed_unit][1])
             tmp_suspect = area_cur - area_last
             for k, v in self.enemy_pos.items():
-                if v[0] in tmp_suspect and (agent.time.cur_step - v[1]) >= 75:
+                if v[0] in tmp_suspect and (self.num - v[1]) >= 75:
                     tmp_suspect = set()
                     break
             tmp_suspect &= self.unscouted
-            self.suspect_hist.append([agent.time.cur_step, tmp_suspect])
+            self.suspect_hist.append([self.num, tmp_suspect])
             # suspect更新1
             if len(self.suspected) == 0:
                 self.suspected = tmp_suspect
@@ -465,7 +465,7 @@ class ScoutExecutor:
             self.units.pop(missed_unit)
             self.car_to_detect.pop(missed_unit) # TODO: check for pop necessity
             print(
-                f"step {agent.time.cur_step} missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}"
+                f"step {self.num} missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}"
             )
         for p in self.suspected:
             self.ob_suspect |= agent.map.get_ob_area2(
@@ -549,7 +549,7 @@ class ScoutExecutor:
             new_enemy = cur_enemy - old_enemy
             for obj_id in new_enemy:
                 enemy_hex = agent.enemy[obj_id]["cur_hex"]
-                print(f"!!!!!! step {agent.time.cur_step} find new enemy at {enemy_hex}!!!!!!")
+                print(f"!!!!!! step {self.num} find new enemy at {enemy_hex}!!!!!!")
                 # suspect更新2
                 last_fire_step = 0
                 ids_to_pop = []
@@ -573,7 +573,7 @@ class ScoutExecutor:
         #     lost_enemy = old_enemy - cur_enemy
         #     for obj_id in lost_enemy:
         #         enemy_hex = self.enemy_pos.pop(obj_id)
-        #         print(f"!!!!!! {agent.time.cur_step} lost enemy at {enemy_hex} !!!!!!")
+        #         print(f"!!!!!! {self.num} lost enemy at {enemy_hex} !!!!!!")
         #         update_enemy_threat_area(agent, enemy_hex, -1)
         #     return -1
         return 0
@@ -631,7 +631,7 @@ class ScoutExecutor:
             return destination
 
         self.num = agent.num
-        if agent.time.cur_step < 3:
+        if self.num < 3:
             self.setup(task, agent)
 
         if not self.area:
@@ -677,7 +677,7 @@ class ScoutExecutor:
             #         move_flag = True
         
         # 更新算子目标点  
-        if agent.time.cur_step == 152: # 解聚完初始化各车待探索区域
+        if self.num == 152: # 解聚完初始化各车待探索区域
             print("car to detect init")
             self.calc_car_to_detect(agent)            
         
@@ -690,7 +690,7 @@ class ScoutExecutor:
             self.reallocate_air(agent)
         
         # arbitrary parameter5
-        if agent.time.cur_step > 1401 and len(self.unscouted) < 400 and unscout_change:
+        if self.num > 1401 and len(self.unscouted) < 400 and unscout_change:
             # print(f"remain {len(self.unscouted)} unscouted: {self.unscouted}")
             print(f"%%%%%%%remain {len(self.unscouted)}%%%%%%%")
             add_p = -1

@@ -684,7 +684,32 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 self.get_target_defend()
             else:
                 raise Exception("invalid saidao, G")
+    
+    def distinguish_saidao2(self,task):
+        if self.num <2:
+            if task["type"] in [210] :
+                # 说明是cross fire 赛道
+                flag_cross_fire = True
+            if task["type"] in [209] :
+                # 说明是Scout 赛道
+                flag_scout = True
+            if task["type"] in [208] :
+                # 说明是Defend 赛道
+                flag_defend = True    
 
+            # 然后搞一下相应的初始化。
+            if flag_cross_fire:
+                self.env_name = "cross_fire" 
+                target_pos = self.get_target_cross_fire()
+            elif flag_scout:
+                self.env_name = "scout" 
+                self.get_target_scout()
+            elif flag_defend:
+                self.env_name = "defend" 
+                self.get_target_defend()
+            else:
+                raise Exception("invalid saidao, G")
+            
     def get_target_cross_fire(self):
         # call one time for one game.
         observation = self.status
@@ -734,7 +759,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     # then step functions 
     def step(self, observation: dict, model="guize"):
         # if model = guize, then generate self.act in step, else if model = RL, then generate self.act in env rather than here.
+        self.update_time()
+        self.update_tasks()
         self.num = self.num + 1 
+        self.num_real = self.num # 这个用来以防万一，因为后面的self.num要改成相对的。
         if self.num == 1:
             print("Debug, moving")
         else:
@@ -744,31 +772,28 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.status = observation # so laji but fangbian.
 
         self.team_info = observation["role_and_grouping_info"]
-        self.controposble_ops = observation["role_and_grouping_info"][self.seat][
-            "operators"
-        ]
+        self.controposble_ops = observation["role_and_grouping_info"][self.seat]["operators" ]
 
-        # get the target first.
-        self.distinguish_saidao()
-
-        # the real tactics in step*() function.
-        # self.step0()
-        if self.env_name=="cross_fire":
-            # update the actions
-            if model == "guize":
+        # 重新整一个，用来处理人机混合。
+        for task in self.tasks:  # 遍历每个分配给本席位任务
+            time_start = task["start_time"] # 这个用来修改self.num,实现相对的时长。
+            self.num = self.num - time_start # 这里改成相对的时长，后面再改回去
+            # get the target first.
+            self.distinguish_saidao2()
+            if task["type"] == 210:
+                # 集结==cross fire
+                self.env_name="cross_fire"
                 self.Gostep_abstract_state()
-            elif model =="RL":
-                pass
-            # self.step_cross_fire()
-            self.step_cross_fire_test()
-        elif self.env_name=="scout":
-            self.step_scout()
-        elif self.env_name=="defend":
-            self.Gostep_abstract_state()
-            self.step_defend()
-        else:
-            raise Exception("G!")
-
+                self.step_cross_fire_test()
+            elif task["type"] == 209:
+                # 侦察
+                self.env_name="scout"
+                self.step_scout(task)
+            elif task["type"] == 208:
+                # 防御
+                self.env_name="defend"
+                self.step_defend()
+            self.num = self.num + time_start # 完了一个循环之后再改回去。原则上这里加了之后self.num应该等于self.num_real
         return self.act
 
     def step0(self):
@@ -997,12 +1022,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             self.group_A(UAV_units,target_pos)
         return 
 
-    def step_scout(self):
+    def step_scout(self,task):
         # unfinished yet.
         self.act = []
         self.ob = self.observation
-        self.update_time()
-        self.update_tasks()
+        # self.update_time()
+        # self.update_tasks()
         if not self.tasks:
             return []  # 如果没有任务则待命
         self.update_all_units()
@@ -1011,8 +1036,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # self.actions = []  # 将要返回的动作容器
         self.prefer_shoot()  # 优先选择射击动作
 
-        for task in self.tasks:  # 遍历每个分配给本席位任务
-            self.task_executors[task["type"]].execute(task, self)  
+        self.task_executors[task["type"]].execute(task, self)  
     
     ###################### defend  ############################    
     @time_decorator
