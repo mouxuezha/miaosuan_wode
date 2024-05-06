@@ -700,7 +700,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 然后搞一下相应的初始化。
             if flag_cross_fire:
                 self.env_name = "cross_fire" 
-                target_pos = self.get_target_cross_fire()
+                target_pos = self.get_target_cross_fire(task)
             elif flag_scout:
                 self.env_name = "scout" 
                 self.get_target_scout()
@@ -710,17 +710,23 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             else:
                 raise Exception("invalid saidao, G")
             
-    def get_target_cross_fire(self):
+    def get_target_cross_fire(self,task):
         # call one time for one game.
         observation = self.status
         communications = observation["communication"]
         flag_done = False
-        for command in communications:
-            if command["type"] in [210] :
-                self.my_direction = command
-                self.target_pos = self.my_direction["hex"]
-                self.end_time = self.my_direction["end_time"]
-                flag_done = True
+        command = task
+        if command["type"] in [210] :
+            self.my_direction = command
+            self.target_pos = self.my_direction["hex"]
+            self.end_time = self.my_direction["end_time"]
+            flag_done = True
+        # for command in communications:
+        #     if command["type"] in [210] :
+        #         self.my_direction = command
+        #         self.target_pos = self.my_direction["hex"]
+        #         self.end_time = self.my_direction["end_time"]
+        #         flag_done = True
         if flag_done==False:
             raise Exception("get_target_cross_fire: G!")
             # print("WTF, it should be cross_fire, GAN")
@@ -739,7 +745,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         defend_pos = []
         for communication in communications:
             defend_pos_single = communication["hex"]
-            defend_pos.append(defend_pos_single)
+            defend_pos.append(defend_pos_single)    
             
         #@szh0404 这个地方看一下是不是在这里初始化BopSubType
         self.troop_stage = {op["obj_id"]: ""  for op in self.observation["operators"] if op["sub_type"]==BopSubType.Infantry}
@@ -761,6 +767,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # if model = guize, then generate self.act in step, else if model = RL, then generate self.act in env rather than here.
         self.update_time()
         self.update_tasks()
+        self.update_all_units()
+        self.update_valid_actions()
+
         self.num = self.num + 1 
         self.num_real = self.num # 这个用来以防万一，因为后面的self.num要改成相对的。
         if self.num == 1:
@@ -779,7 +788,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             time_start = task["start_time"] # 这个用来修改self.num,实现相对的时长。
             self.num = self.num - time_start # 这里改成相对的时长，后面再改回去
             # get the target first.
-            self.distinguish_saidao2()
+            self.distinguish_saidao2(task)
             if task["type"] == 210:
                 # 集结==cross fire
                 self.env_name="cross_fire"
@@ -1030,10 +1039,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # self.update_tasks()
         if not self.tasks:
             return []  # 如果没有任务则待命
-        self.update_all_units()
-        self.update_valid_actions()
-
-        # self.actions = []  # 将要返回的动作容器
+        
         self.prefer_shoot()  # 优先选择射击动作
 
         self.task_executors[task["type"]].execute(task, self)  
