@@ -686,6 +686,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 raise Exception("invalid saidao, G")
     
     def distinguish_saidao2(self,task):
+        flag_cross_fire = False
+        flag_scout = False
+        flag_defend = False
         if self.num <2:
             if task["type"] in [210] :
                 # 说明是cross fire 赛道
@@ -708,7 +711,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 self.env_name = "defend" 
                 self.get_target_defend()
             else:
-                raise Exception("invalid saidao, G")
+                # raise Exception("invalid saidao, G")
+                print("invalid saidao, G")
+                # 不要再报异常了。不然非法任务直接就把AI干死了
             
     def get_target_cross_fire(self,task):
         # call one time for one game.
