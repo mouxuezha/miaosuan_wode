@@ -1406,7 +1406,8 @@ class BaseAgent(ABC):
                 for unit in self.detected_state:
                     # 遍历敌人，看会不会打到这个点，会的话就给这个点加一些威胁。原则上和threaten_source["type"] == 0是一样的，但是为了体现思路的不同直接用self.detected_state了。
                     enemy_pos = self.get_pos(unit) # unit["cur_hex"] 
-                    enemy_type = unit["sub_type"]
+                    # enemy_type = unit["sub_type"]
+                    enemy_type = unit["type"]
                     my_type = 2 # 直接用车辆了，
                     # 调地图，看是不是会被打到。
                     flag_can_shoot = self.map.can_shoot(enemy_pos, pos_single, enemy_type, my_type)

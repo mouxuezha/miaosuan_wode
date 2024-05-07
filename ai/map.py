@@ -7,11 +7,13 @@ from .const import BopType, CondType
 from .tools import time_decorator
 
 ob_range = [
-    [10, 25, 1],
-    [10, 25, 1],
-    [2, 2, -1],
+    [10, 25, 1, 10, 0],
+    [10, 25, 1, 25, 0],
+    [2, 2, -1, 2, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0]
 ]  # 依次为步兵、车辆、无人机的无地形遮蔽可观察距离
-max_shoot_range = [10, 20, 0]  # 依次为步兵、车辆、无人机的最大射程
+max_shoot_range = [10, 20, 0, 0, 0]  # 依次为步兵、车辆、无人机的最大射程
 
 
 class Map:

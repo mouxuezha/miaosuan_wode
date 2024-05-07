@@ -770,6 +770,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     # then step functions 
     def step(self, observation: dict, model="guize"):
         # if model = guize, then generate self.act in step, else if model = RL, then generate self.act in env rather than here.
+        self.act = []
+        self.observation = observation
+        self.ob = self.observation
         self.update_time()
         self.update_tasks()
         self.update_all_units()
@@ -1038,8 +1041,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
     def step_scout(self,task):
         # unfinished yet.
-        self.act = []
-        self.ob = self.observation
+
         # self.update_time()
         # self.update_tasks()
         if not self.tasks:
@@ -1084,6 +1086,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         #         self.set_open_fire(unit)
 
         # print("step_defend: unfinished yet.")
+        print("step_defend: get in successfully get in")
 
         #@szh 0404 添加fort状态
         self.fort_assignments = {op["obj_id"]: op["entering_fort_partner"]+op["fort_passengers"] for op in self.observation["operators"] if op["type"]==BopType.Fort}
