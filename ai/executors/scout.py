@@ -159,16 +159,17 @@ class ScoutExecutor:
         self.area.sort()
         self.unscouted = set(self.area.copy())
         for point in self.area:
-            air_ob_area = agent.map.get_ob_area2(
-                point, BopType.Aircraft, BopType.Vehicle, constrain_area=set(self.area)
-            )
-            self.air_ob[point] = len(air_ob_area)
-            car_ob_area = agent.map.get_ob_area2(
-                point, BopType.Vehicle, BopType.Vehicle, constrain_area=set(self.area)
-            )
-            self.car_ob[point] = len(car_ob_area)
-        self.max_air_ob_num = max(self.air_ob.values())
-        self.max_car_ob_num = max(self.car_ob.values())
+            # air_ob_area = agent.map.get_ob_area3(
+            #     point, BopType.Aircraft, BopType.Vehicle, constrain_area=set(self.area)
+            # )
+            # self.air_ob[point] = len(air_ob_area)
+            # car_ob_area = agent.map.get_ob_area3(
+            #     point, BopType.Vehicle, BopType.Vehicle, constrain_area=set(self.area)
+            # )
+            self.car_ob[point] = -1
+        # self.max_air_ob_num = max(self.air_ob.values())
+        # self.max_car_ob_num = max(self.car_ob.values())
+        self.max_car_ob_num = 1951
         self.area2xy()
         self.repeat_map = {key: 0 for key in self.area}
         self.threat_map = {key: 0 for key in self.area}
@@ -251,7 +252,7 @@ class ScoutExecutor:
         ob_area = set()
         path = self.my_a_star(agent, unit, end, begin)
         for point in path:
-            ob_area |= agent.map.get_ob_area2(
+            ob_area |= agent.map.get_ob_area3(
                 point, BopType.Aircraft, BopType.Vehicle
             )
         return ob_area
@@ -372,7 +373,7 @@ class ScoutExecutor:
 
     def update_unscouted(self, agent, cur_hex, unit_type):
         # scouted = set(self.area) - self.unscouted
-        new_ob = self.unscouted & agent.map.get_ob_area2(
+        new_ob = self.unscouted & agent.map.get_ob_area3(
             cur_hex, unit_type, BopType.Vehicle)
         last_unscout_num = len(self.unscouted)
         self.unscouted -= new_ob
@@ -390,7 +391,7 @@ class ScoutExecutor:
         self.suspected -= excluded_suspect
         cur_suspect_num = len(self.suspected)
         for p in excluded_suspect:
-            self.ob_suspect &= agent.map.get_ob_area2(
+            self.ob_suspect &= agent.map.get_ob_area3(
                 p, BopType.Vehicle, BopType.Vehicle,
                 True, set(self.area)
             )
@@ -468,7 +469,7 @@ class ScoutExecutor:
                 f"step {self.num} missed unit: {missed_unit}, tmp suspect num: {len(tmp_suspect)}, final suspect num: {len(self.suspected)}"
             )
         for p in self.suspected:
-            self.ob_suspect |= agent.map.get_ob_area2(
+            self.ob_suspect |= agent.map.get_ob_area3(
                 p, BopType.Vehicle, BopType.Vehicle,
                 True, set(self.area)
             )
@@ -494,7 +495,12 @@ class ScoutExecutor:
                         if unit["type"] == BopType.Vehicle:
                             neigh_cost += self.threat_map[neigh]
                             # arbitrary parameter3
-                            neigh_cost -= self.car_ob[neigh] / self.max_car_ob_num / 5
+                            if self.car_ob[neigh] == -1:
+                                self.car_ob[neigh] = len(agent.map.get_ob_area3(
+                                    neigh, BopType.Vehicle, BopType.Vehicle,
+                                    False, self.unscouted
+                                ))
+                            neigh_cost -= self.car_ob[neigh] / self.max_car_ob_num * 1.5
                         # TODO: 这个else可能不需要
                         # else:
                         #     neigh_cost -= self.air_ob[neigh] / self.max_air_ob_num / 5
@@ -557,7 +563,7 @@ class ScoutExecutor:
                     if enemy_hex in self.suspect_hist[i][1]:
                         self.suspected -= self.suspect_hist[i][1]
                         for p in self.suspect_hist[i][1]:
-                            self.ob_suspect &= agent.map.get_ob_area2(
+                            self.ob_suspect &= agent.map.get_ob_area3(
                                 p, BopType.Vehicle, BopType.Vehicle,
                                 True, set(self.area)
                             )
@@ -595,11 +601,11 @@ class ScoutExecutor:
         def calc_score(point):
             # arbitrary parameter4
             alpha = [1, 0, -5, -5]
-            ob_area = agent.map.get_ob_area2(
+            ob_area = agent.map.get_ob_area3(
                 point, BopType.Vehicle, BopType.Vehicle,
                 False, self.unscouted
             )
-            obed_area = agent.map.get_ob_area2(
+            obed_area = agent.map.get_ob_area3(
                 point, BopType.Vehicle, BopType.Vehicle,
                 True, set(self.area)
             )
@@ -696,12 +702,17 @@ class ScoutExecutor:
             add_p = -1
             min_ob = 1000
             for p in self.unscouted:
+                if self.car_ob[p] == -1:
+                    self.car_ob[p] = len(agent.map.get_ob_area3(
+                        p, BopType.Vehicle, BopType.Vehicle,
+                        False, set(self.area)
+                    ))
                 if self.car_ob[p] < min_ob:
                     min_ob = self.car_ob[p]
                     add_p = p
             # suspect更新3
             self.suspected.add(add_p)
-            self.ob_suspect |= agent.map.get_ob_area2(
+            self.ob_suspect |= agent.map.get_ob_area3(
                 add_p, BopType.Vehicle, BopType.Vehicle,
                 True, set(self.area)
             )

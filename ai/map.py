@@ -37,7 +37,8 @@ class Map:
         self.see = see_data
         current_dir = os.path.dirname(os.path.abspath(__file__))
         ob_file_path = os.path.join(current_dir, "ob_mat.npy")
-        self.ob = np.load(ob_file_path)
+        # self.ob = np.load(ob_file_path)
+        self.ob_area3 = {}
 
     def is_valid(self, pos):
         """
@@ -262,6 +263,18 @@ class Map:
         else:
             return False
 
+    def get_ob_mode(self, unit_type, target_type):
+        """0-地面看步兵，1-地面看车辆，2-无人机看地面，-1-地面看无人机看不到"""
+        if unit_type == BopType.Aircraft:
+            return 2
+        else:
+            if target_type == BopType.Infantry:
+                return 0
+            elif target_type == BopType.Vehicle:
+                return 1
+            else:
+                return -1
+
     def get_ob_area(self, center: int, unit_type: int, exclude_area=None):
         """
         Get the observation area of a unit.
@@ -283,30 +296,69 @@ class Map:
         """
         调用算好的ob矩阵
         :return: set
-        """
-        def get_ob_mode(unit_type, target_type):
-            # 0-地面看步兵，1-地面看车辆，2-无人机看地面
-            if unit_type == BopType.Aircraft:
-                return 2
-            else:
-                if target_type == BopType.Infantry:
-                    return 0
-                else:  # target_type == BopType.Vehicle
-                    return 1
-                
+        """              
         def idx2hex(idx):
             return idx // self.max_col * 100 + idx % self.max_col
-
-        mode = get_ob_mode(unit_type, target_type)
+              
         idx = center // 100 * self.max_col + center % 100
         if passive:
+            mode = self.get_ob_mode(target_type, unit_type)
+            if mode == -1:
+                return set()
             ob_area_idx = np.where(self.ob[mode][:, idx])[0]
         else:
+            mode = self.get_ob_mode(unit_type, target_type)
+            if mode == -1:
+                return set()
             ob_area_idx = np.where(self.ob[mode][idx, :])[0]
         ob_area_hex = [idx2hex(x) for x in ob_area_idx]
         ob_area = set(ob_area_hex)
         if constrain_area:
             ob_area &= constrain_area
+        return ob_area
+
+    def get_ob_area3(self, center: int, unit_type: int, target_type: int,
+        passive=False, constrain_area=None):
+        """
+        人混阶段算好的ob矩阵可能不能调用，做个备保
+        :return: set
+        """
+        def mode2radius(mode):
+            # switch case to determine radius based on mode
+            radius = {
+                0: 10,
+                1: 25,
+                2: 2
+            }.get(mode, 0)
+            return radius
+        if constrain_area is None:
+            constrain_area = set()
+        if (center, unit_type, target_type, passive, tuple(constrain_area)) in self.ob_area3.keys():
+            ob_area = self.ob_area3[(center, unit_type, target_type, passive, tuple(constrain_area))]
+        else:        
+            ob_area_list = []
+            if passive:
+                mode = self.get_ob_mode(target_type, unit_type)
+                radius = mode2radius(mode)
+                cond = self.basic[center // 100][center % 100]["cond"]
+                if cond in [CondType.Jungle, CondType.City]:
+                    radius //= 2
+                candidate = self.get_grid_distance(center, 0, radius)
+                see_mode = self.get_see_mode(target_type, unit_type)
+                for c in candidate:
+                    if self.can_see(c, center, see_mode):
+                        ob_area_list.append(c)
+            else:
+                mode = self.get_ob_mode(unit_type, target_type)
+                radius = mode2radius(mode)
+                candidate = self.get_grid_distance(center, 0, radius)
+                for c in candidate:
+                    if self.can_observe(center, c, unit_type, target_type):
+                        ob_area_list.append(c)
+            ob_area = set(ob_area_list)
+            if constrain_area:
+                ob_area &= constrain_area
+            self.ob_area3[(center, unit_type, target_type, passive, tuple(constrain_area))] = ob_area
         return ob_area
 
     def get_shoot_area(self, center: int, unit_type: int, exclude_area=None):
