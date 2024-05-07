@@ -10,3 +10,4 @@ agent_demo.py
 ai/agent_local0421.py
 ai/base_agent0421.py
 requirements.txt
+*.zip
