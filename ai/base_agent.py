@@ -2236,6 +2236,12 @@ class BaseAgent(ABC):
         cur_step = self.ob["time"]["cur_step"]
         stage = self.ob["time"]["stage"]
         self.time = Time(cur_step, stage)
+        # if cur_step ==1:
+        #     # 增加一个强行的时间同步
+        #     self.num = cur_step
+
+        # 讲道理如果显式考虑相对时间的话。这里直接同步了并无不可
+        self.num = cur_step
 
     def update_tasks(self):
         self.tasks = []

@@ -689,6 +689,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         flag_cross_fire = False
         flag_scout = False
         flag_defend = False
+        self.end_time = task["end_time"]
         if self.num <2:
             if task["type"] in [210] :
                 # 说明是cross fire 赛道
@@ -968,6 +969,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
     def step_cross_fire_test(self):
         # this is to test group_A2.
+        print("step_cross_fire_test: get in successfully get in, self.num="+str(self.num))
         target_pos = self.target_pos
         units=self.status["operators"]           
         IFV_units = self.get_IFV_units()
@@ -1044,6 +1046,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # self.update_time()
         # self.update_tasks()
+        print("step_scout: get in successfully get in, self.num="+str(self.num))
+
         if not self.tasks:
             return []  # 如果没有任务则待命
         
@@ -1086,7 +1090,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         #         self.set_open_fire(unit)
 
         # print("step_defend: unfinished yet.")
-        print("step_defend: get in successfully get in")
+        print("step_defend: get in successfully get in, self.num="+str(self.num))
 
         #@szh 0404 添加fort状态
         self.fort_assignments = {op["obj_id"]: op["entering_fort_partner"]+op["fort_passengers"] for op in self.observation["operators"] if op["type"]==BopType.Fort}
