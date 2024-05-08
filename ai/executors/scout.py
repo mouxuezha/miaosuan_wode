@@ -637,7 +637,7 @@ class ScoutExecutor:
             return destination
 
         self.num = agent.num
-        if self.num < 3:
+        if self.num == 1:
             self.setup(task, agent)
 
         if not self.area:
