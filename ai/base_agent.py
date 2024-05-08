@@ -1623,9 +1623,19 @@ class BaseAgent(ABC):
         if "next" in kargs:
             self.abstract_state[attacker_ID]["next"] = kargs["next"]
 
-    def set_off_board(self,attacker_ID, infantry_ID,**kargs):
+    def set_off_board(self,attacker_ID,**kargs):
         attacker_ID = self._set_compatible(attacker_ID)
-        infantry_ID = self._set_compatible(infantry_ID)        
+        # infantry_ID = self._set_compatible(infantry_ID) 
+        # 原则上不用输入infantryID，而是可以直接读出来的。
+        unit_attacker = self.get_bop(attacker_ID) 
+        valid_xiache_sub_type = [1, 8] # 步兵战车和运输直升机
+        if unit_attacker["sub_type"] in valid_xiache_sub_type:
+            # 说明是可以下车的装备，那就读取里面的infantry_ID
+            infantry_ID = unit_attacker["passenger_ids"][0]
+        else:
+            # 如果不是可下车的装备类型，那就不改抽象状态了，直接无事发生返回了。
+            return
+
         self.abstract_state[attacker_ID] = {"abstract_state": "off_board",
                                                 "infantry_ID": infantry_ID,
                                                 "flag_state": 1,
@@ -2308,7 +2318,20 @@ class BaseAgent(ABC):
                 )
                 self.act.append(act)
                 self.flag_act[obj_id] = True
-        
+    
+    # ------下面是渲染的------
+    def add_xuanran(self, **kwargs):
+        if "color" in kwargs:
+            color = kwargs["color"]
+        else:
+            color = "#66ccff" # 默认就标纯的红色
+        print("add_xuanran: unfinished yet")
+        pass 
+
+    def delet_xuanran(self, description):
+        print("add_xuanran: unfinished yet")
+        pass 
+
 @dataclass
 class Time:
     """维护当前推演时间"""
