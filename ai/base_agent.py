@@ -1623,9 +1623,19 @@ class BaseAgent(ABC):
         if "next" in kargs:
             self.abstract_state[attacker_ID]["next"] = kargs["next"]
 
-    def set_off_board(self,attacker_ID, infantry_ID,**kargs):
+    def set_off_board(self,attacker_ID,**kargs):
         attacker_ID = self._set_compatible(attacker_ID)
-        infantry_ID = self._set_compatible(infantry_ID)        
+        # infantry_ID = self._set_compatible(infantry_ID) 
+        # 原则上不用输入infantryID，而是可以直接读出来的。
+        unit_attacker = self.get_bop(attacker_ID) 
+        valid_xiache_sub_type = [1, 8] # 步兵战车和运输直升机
+        if unit_attacker["sub_type"] in valid_xiache_sub_type:
+            # 说明是可以下车的装备，那就读取里面的infantry_ID
+            infantry_ID = unit_attacker["passenger_ids"][0]
+        else:
+            # 如果不是可下车的装备类型，那就不改抽象状态了，直接无事发生返回了。
+            return
+
         self.abstract_state[attacker_ID] = {"abstract_state": "off_board",
                                                 "infantry_ID": infantry_ID,
                                                 "flag_state": 1,
@@ -1838,7 +1848,11 @@ class BaseAgent(ABC):
                 # self._move_action(attacker_ID, pos_next)
         else:
             # 那就是到了，那就要改抽象状态里面了。
-            self.__finish_abstract_state(attacker_ID)      
+            if "next" in self.abstract_state[attacker_ID]:
+                # 如果后续还有别的抽象状态，那就转过去。不然就转成open fire
+                self.__finish_abstract_state(attacker_ID)      
+            else:
+                self.set_open_fire(attacker_ID)
     
     def __handle_move_and_attack_UAV(self,attacker_ID,pos_next_list):
         # 这个是无人机的，怎么快怎么来，不要避障，不读势场。
@@ -2149,44 +2163,51 @@ class BaseAgent(ABC):
         # 这个之前是没有的。思路也是一样的，分状态分距离。# 而且这个需要好好整一下
         unit_infantry = self.get_bop(infantry_ID)
         unit_attacker = self.get_bop(attacker_ID)
-        # 一样的，接管步兵的控制权。在上车完成之前，步兵的抽象状态不再生效。
-        flag_infantry_exist = self.is_exist(infantry_ID)
-        if flag_infantry_exist:
-            self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
-            flag_state = 3 # finished xiache,
-        else:
-            pass 
-
-        # 然后启动超时check
-        flag_time_out = self._abstract_state_timeout_check(attacker_ID)
-        if flag_time_out:
+        # 一样的，接管步兵的控制权。步兵的抽象状态不再生效。
+        # TODO: 这里改成用valia action来检测。
+        if len(self._check_actions(unit_attacker, model="jieju"))==0 or len(unit_attacker["passenger_ids"]) ==0:
+            # 可行动作中没有跟上下车有关的，那就直接判定为结束好了。
             self.__finish_abstract_state(attacker_ID)
-            # self.__finish_abstract_state(infantry_ID)
-            return
+            flag_state = 3
+            return 
+        
+        # # 然后启动超时check
+        # 先关了看看情况。
+        # flag_time_out = self._abstract_state_timeout_check(attacker_ID)
+        # if flag_time_out:
+        #     self.__finish_abstract_state(attacker_ID)
+        #     # self.__finish_abstract_state(infantry_ID)
+        #     return
 
         if flag_state == 1:
             # 具备条件了，但是还没有发下车命令。那就发个下车指令然后开始等着。
-            # 没停车就停车，停车了就发指令。
-            if self.is_stop(attacker_ID) == False:
-                self._stop_action(attacker_ID)
-                # 停车，一直check到标志位变了，到停稳
-            else:
-                # 那就是停下了，那就发命令下车。
-                self._off_board_action(attacker_ID,infantry_ID)
-                self.abstract_state[attacker_ID]["num_wait"] = 75
-                # 发出命令之后等着。
-                flag_state = 2
-                self.abstract_state[attacker_ID]["flag_state"] = flag_state            
+            self._off_board_action(attacker_ID,infantry_ID)
+            self.abstract_state[attacker_ID]["num_wait"] = 75
+            # 发出命令之后等着。
+            flag_state = 2
+            self.abstract_state[attacker_ID]["flag_state"] = flag_state
+
+            # # 没停车就停车，停车了就发指令。
+            # if self.is_stop(attacker_ID) == False:
+            #     self._stop_action(attacker_ID)
+            #     # 停车，一直check到标志位变了，到停稳
+            # else:
+            #     # 那就是停下了，那就发命令下车。
+            #     self._off_board_action(attacker_ID,infantry_ID)
+            #     self.abstract_state[attacker_ID]["num_wait"] = 75
+            #     # 发出命令之后等着。
+            #     flag_state = 2
+            #     self.abstract_state[attacker_ID]["flag_state"] = flag_state            
             pass
-        elif flag_state == 2:
+        if flag_state == 2:
             # 发了下车命令了，正在等下车CD
             self.abstract_state[attacker_ID]["num_wait"] = self.abstract_state[attacker_ID]["num_wait"] - 1
-            if self.abstract_state[attacker_ID]["num_wait"]==1:
+            if self.abstract_state[attacker_ID]["num_wait"]<0:
                 # 说明下车下好了，转换状态
                 flag_state = 3
                 self.abstract_state[attacker_ID]["flag_state"] = flag_state       
             pass
-        elif flag_state == 3:
+        if flag_state == 3:
             # 下车下完了，就可以结束任务了。
             self.__finish_abstract_state(attacker_ID)
             # self.__finish_abstract_state(infantry_ID) # 结束对步兵的控制
@@ -2236,6 +2257,12 @@ class BaseAgent(ABC):
         cur_step = self.ob["time"]["cur_step"]
         stage = self.ob["time"]["stage"]
         self.time = Time(cur_step, stage)
+        # if cur_step ==1:
+        #     # 增加一个强行的时间同步
+        #     self.num = cur_step
+
+        # 讲道理如果显式考虑相对时间的话。这里直接同步了并无不可
+        self.num = cur_step
 
     def update_tasks(self):
         self.tasks = []
@@ -2304,7 +2331,20 @@ class BaseAgent(ABC):
                 )
                 self.act.append(act)
                 self.flag_act[obj_id] = True
-        
+    
+    # ------下面是渲染的------
+    def add_xuanran(self, **kwargs):
+        if "color" in kwargs:
+            color = kwargs["color"]
+        else:
+            color = "#66ccff" # 默认就标纯的红色
+        print("add_xuanran: unfinished yet")
+        pass 
+
+    def delet_xuanran(self, description):
+        print("add_xuanran: unfinished yet")
+        pass 
+
 @dataclass
 class Time:
     """维护当前推演时间"""

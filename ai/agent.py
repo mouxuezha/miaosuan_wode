@@ -173,7 +173,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         for unit in units:
             if len(units_VIP)==0:
                 # 那就是被跟随的已经被杀完了，那就无所谓了
-                self.set_move_and_attack(unit,self.target_pos,model="force")
+                # 来点随机性，防止全都堆在一起。
+                target_pos_candidate = list(self.map.get_grid_distance(self.target_pos,0,1))
+                target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
+                self.set_move_and_attack(unit,target_pos_selected,model="force")
             else:
                 # 找那一堆里面距离最近的来跟随。
                 jvli_list = [] 
@@ -183,7 +186,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 jvli_min = min(jvli_list)
                 index_min = jvli_list.index(jvli_min)
                 VIP_pos_single = units_VIP[index_min]["cur_hex"]
-                self.set_move_and_attack(unit,VIP_pos_single,model="force")
+                target_pos_candidate = list(self.map.get_grid_distance(VIP_pos_single,0,1))
+                target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
+                self.set_move_and_attack(unit,target_pos_selected,model="force")
 
     def get_pos_list_A(self, units, target_pos):
         # 上来先维护target_pos_list,包括判断威胁等级看是不是有必要绕路。
@@ -426,7 +431,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     if pos_single==target_pos_single:
                         # 说明到了这个点了，那就去下一个点。
                         target_pos = target_pos_list_temp[i+1]
-                        self.set_move_and_attack(unit,target_pos,model="force")
+                        target_pos_candidate = list(self.map.get_grid_distance(target_pos,0,1))
+                        target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
+                        self.set_move_and_attack(unit,target_pos_selected,model="force")
                         del target_pos_list_temp[i]
                         break 
                     else:
@@ -471,6 +478,31 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                         break
 
         return 
+    
+    def final_xiache(self, units):
+        # 这个是最后加个下车。
+        # 改改逻辑，谁到了谁就下，不要等都到了才下。
+        for unit in units:
+            # 判断到没到
+            flag_arrived, units_arrived = self.is_arrive([unit],self.target_pos,tolerance = 3 )
+            if flag_arrived == False:
+                # 没到就算了
+                return
+            
+            # 判断停没停
+            flag_is_stop = self.is_stop(unit)
+            if flag_is_stop == False:
+                # 没停就算了
+                return
+
+            # 判断能不能下车
+            flag_can_xiache = (len(unit["passenger_ids"])>0)
+            if flag_can_xiache == False:
+                # 不能就算了
+                return
+
+            # 发下车指令
+            self.set_off_board(unit)
 
     def UAV_patrol(self, target_pos):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
@@ -586,7 +618,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
                 infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
                 if len(infantry_ID_list)>0:
-                    self.set_off_board(IFV_unit, infantry_ID_list[0])
+                    # self.set_off_board(IFV_unit, infantry_ID_list[0])
+                    self.set_off_board(IFV_unit)
                 else:
                     print("nothing to off board")
                     pass
@@ -634,7 +667,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             if "abstract_state" in abstract_state_single:
                 if abstract_state_single["abstract_state"] == "jieju":
                     flag_finished and False
-                if abstract_state_single["abstract_state"] == "jieju":
+                if abstract_state_single["abstract_state"] == "move_and_attack":
                     if "flag_jieju" in abstract_state_single:
                         flag_finished and False
                 pass
@@ -689,6 +722,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         flag_cross_fire = False
         flag_scout = False
         flag_defend = False
+        flag_attack = False
+        self.end_time = task["end_time"]
         if self.num <2:
             if task["type"] in [210] :
                 # 说明是cross fire 赛道
@@ -698,7 +733,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 flag_scout = True
             if task["type"] in [208] :
                 # 说明是Defend 赛道
-                flag_defend = True    
+                flag_defend = True 
+            if task["type"] in [207]:
+                # 说明是attack 任务
+                flag_attack = True
 
             # 然后搞一下相应的初始化。
             if flag_cross_fire:
@@ -710,6 +748,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             elif flag_defend:
                 self.env_name = "defend" 
                 self.get_target_defend()
+            elif flag_attack:
+                self.env_name = "attack"
+                target_pos = self.get_target_attack(task)
             else:
                 # raise Exception("invalid saidao, G")
                 print("invalid saidao, G")
@@ -741,7 +782,23 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         else:
             print("get_target_cross_fire: Done.")
         return  self.target_pos
-
+    def get_target_attack(self,task):
+        # call one time for one game.
+        observation = self.status
+        communications = observation["communication"]
+        flag_done = False
+        command = task
+        if command["type"] in [207] :
+            self.my_direction = command
+            self.target_pos = self.my_direction["hex"]
+            self.end_time = self.my_direction["end_time"]
+            flag_done = True
+        if flag_done==False:
+            raise Exception("get_target_attack: G!")
+        else:
+            print("get_target_attack: Done.")
+        return  self.target_pos
+    
     def get_target_defend(self):
         observation = self.status
         communications = observation["communication"]
@@ -778,7 +835,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         self.update_all_units()
         self.update_valid_actions()
 
-        self.num = self.num + 1 
+        # self.num = self.num + 1 
         self.num_real = self.num # 这个用来以防万一，因为后面的self.num要改成相对的。
         if self.num == 1:
             print("Debug, moving")
@@ -810,7 +867,19 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 # 防御
                 self.env_name="defend"
                 self.step_defend()
+            elif task["type"] == 207:
+                # 进攻，之前是没有的。
+                self.env_name="attack"
+                self.Gostep_abstract_state()
+                self.step_attack()
             self.num = self.num + time_start # 完了一个循环之后再改回去。原则上这里加了之后self.num应该等于self.num_real
+        
+        # 再来一个，人机混合的时候如果没有任务，那就A过去。
+        if len(self.tasks) == 0:
+            # 先A过去，然后一转防御
+            self.Gostep_abstract_state()
+            self.step_default()
+
         return self.act
 
     def step0(self):
@@ -968,6 +1037,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
     def step_cross_fire_test(self):
         # this is to test group_A2.
+        print("step_cross_fire_test: successfully get in, self.num="+str(self.num))
         target_pos = self.target_pos
         units=self.status["operators"]           
         IFV_units = self.get_IFV_units()
@@ -1015,10 +1085,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         elif self.num>350:
             self.list_A(qianpai_units,target_pos)
 
-        # if arrived, then juhe.
-        if self.num>800:
-            self.final_juhe(tank_units)
-            self.final_juhe(IFV_units)
+        # # if arrived, then juhe.
+        # if self.num>800:
+        #     self.final_juhe(tank_units)
+        #     self.final_juhe(IFV_units)
 
         if self.num>1500:
             # 最后一波了，直接F2A了
@@ -1037,6 +1107,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.UAV_patrol2(self.unscouted)
         else:
             self.group_A(UAV_units,target_pos)
+
+
+        self.final_xiache(units)
+        
         return 
 
     def step_scout(self,task):
@@ -1044,6 +1118,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # self.update_time()
         # self.update_tasks()
+        print("step_scout: successfully get in, self.num="+str(self.num))
+
         if not self.tasks:
             return []  # 如果没有任务则待命
         
@@ -1051,6 +1127,40 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         self.task_executors[task["type"]].execute(task, self)  
     
+    def step_attack(self):
+        # 先解决有无问题。F2A总会吧。
+        print("step_jingong: successfully get in, self.num="+str(self.num))
+
+        units = self.status["operators"] 
+        jieju_flag = self.jieju_check(model="part", units=units)
+        # if self.num<500 and jieju_flag==False:
+        if jieju_flag==False and self.num<300:
+            # 那就是没解聚完，那就继续解聚。
+            for unit in units:
+                self.set_jieju(unit)
+        else:
+            self.group_A2(units,[])        # 直接框框A过去  。
+
+        self.final_xiache(units) 
+        return
+    
+    def step_default(self):
+        # 这个是处理没有收到信号的时候的情况，先A过去然后在那里防御。
+        target_pos = 2652
+        units = self.status["operators"]
+        start_time = 1000
+        if self.num < start_time:
+            self.target_pos = 2652
+            self.step_attack()
+        else:
+            self.num = self.num - start_time 
+            # 然后假装防御一会儿.这就需要改成相对的路径了
+            self.step_defend()
+
+            self.num = self.num + start_time 
+
+
+
     ###################### defend  ############################    
     @time_decorator
     def step_defend(self):
@@ -1086,7 +1196,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         #         self.set_open_fire(unit)
 
         # print("step_defend: unfinished yet.")
-        print("step_defend: get in successfully get in")
+        print("step_defend: successfully get in, self.num="+str(self.num))
 
         #@szh 0404 添加fort状态
         self.fort_assignments = {op["obj_id"]: op["entering_fort_partner"]+op["fort_passengers"] for op in self.observation["operators"] if op["type"]==BopType.Fort}
