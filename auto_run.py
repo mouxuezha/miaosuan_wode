@@ -96,7 +96,7 @@ class auto_run():
         self.blue1 = Agent()
         self.env1 = TrainEnv()
         self.begin = time.time()
-        self.starter_kit_location = "C:\\Users\\Administrator\\Desktop\\insiaosuan\\starter-kit"
+        self.starter_kit_location = "/home/vboxuser/Desktop/miaosuan/starter-kit/"
 
     def run_single(self):
         # varialbe to build replay
@@ -150,7 +150,7 @@ class auto_run():
         # instantiate agents and env
         red1 = self.red1
         blue1 = self.blue1
-        env1 = TrainEnv()
+        env1 = self.env1
         begin = time.time()
 
         # get data ready, data can from files, web, or any other sources
@@ -228,13 +228,13 @@ class auto_run():
 
         assign_task = {
             "actor": 1, #"int 动作发出者席位",
-            "type": 209,
+            "type": 210,
             "seat": 1, #"命令接收人id",
-            "hex": 3456, #"任务目标位置",
-            "radius": 20, #"侦察半径"
-            "start_time": 2, #"起始时间",
-            "end_time": 3000, #"结束时间",
-            "unit_ids": [261,262,57,55,333], #"执行任务的单位ID列表",
+            "hex": 2652, #"任务目标位置",
+            # "radius": 20, #"侦察半径"
+            "start_time": 1, #"起始时间",
+            "end_time": 2500, #"结束时间",
+            "unit_ids": [43,44,45,118,123,124,180,181,182,302,333,86,89,326,335], #"执行任务的单位ID列表",
             "route": [], #"执行此任务的途径点列表"
         }
         
@@ -250,7 +250,7 @@ class auto_run():
         
         
         # loop until the end of game
-        print("steping")
+        print("run_in_single_agent_mode: steping")
         done = False
         while not done:
             actions = []
