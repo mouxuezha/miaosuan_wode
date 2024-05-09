@@ -127,13 +127,29 @@ def run_in_single_agent_mode():
         "route": [], #"执行此任务的途径点列表"
     }
     
+    end_deploy1 = {
+        "actor": 1, #"int，动作发出者",
+        "type": 333
+    }
+    
+    end_deploy2 = {
+        "actor": 11, #"int，动作发出者",
+        "type": 333
+    }
+    
+    
     # loop until the end of game
     print("steping")
     done = False
     while not done:
         actions = []
+        if state[RED]["time"]["cur_step"] == 0:
+            actions.append(end_deploy1)
+            actions.append(end_deploy2)
+
         if state[RED]["time"]["cur_step"] == 1:
             actions.append(assign_task)
+
         actions += red1.step(state[RED])
         actions += blue1.step(state[BLUE])
         state, done = env1.step(actions)
