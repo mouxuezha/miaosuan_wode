@@ -1973,9 +1973,14 @@ class BaseAgent(ABC):
 
         # 如果在机动，就停下来。
         flag_is_stop = self.is_stop(attacker_ID)
-        if not(flag_is_stop):
-            # 没有is stop就是在机动呗，那就停下来。
-            self._stop_action(attacker_ID)
+        unit = self.get_bop(attacker_ID)
+        if unit["sub_type"] == 0:
+            # 坦克能移动攻击所以不用停
+            pass
+        else:
+            if not(flag_is_stop):
+                # 没有is stop就是在机动呗，那就停下来。
+                self._stop_action(attacker_ID)
 
         # 这个写法相当于每一步都检测一次，能打就打
         # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
@@ -2267,6 +2272,8 @@ class BaseAgent(ABC):
     def update_tasks(self):
         self.tasks = []
         for task in self.ob["communication"]:
+            if task["type"] in [204, 205]:
+                continue  # 204和205是聊天和渲染，不需要执行
             if (
                 task["seat"] == self.seat
                 and task["start_time"] <= self.time.cur_step < task["end_time"]
