@@ -174,7 +174,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             if len(units_VIP)==0:
                 # 那就是被跟随的已经被杀完了，那就无所谓了
                 # 来点随机性，防止全都堆在一起。
-                target_pos_candidate = self.map.get_distance(self.target_pos,0,1)
+                target_pos_candidate = list(self.map.get_grid_distance(self.target_pos,0,1))
                 target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
                 self.set_move_and_attack(unit,target_pos_selected,model="force")
             else:
@@ -186,9 +186,9 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 jvli_min = min(jvli_list)
                 index_min = jvli_list.index(jvli_min)
                 VIP_pos_single = units_VIP[index_min]["cur_hex"]
-                target_pos_candidate = self.map.get_distance(VIP_pos_single,0,1)
+                target_pos_candidate = list(self.map.get_grid_distance(VIP_pos_single,0,1))
                 target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
-                self.set_move_and_attack(unit,VIP_pos_single,model="force")
+                self.set_move_and_attack(unit,target_pos_selected,model="force")
 
     def get_pos_list_A(self, units, target_pos):
         # 上来先维护target_pos_list,包括判断威胁等级看是不是有必要绕路。
@@ -431,7 +431,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     if pos_single==target_pos_single:
                         # 说明到了这个点了，那就去下一个点。
                         target_pos = target_pos_list_temp[i+1]
-                        target_pos_candidate = self.map.get_distance(target_pos,0,1)
+                        target_pos_candidate = list(self.map.get_grid_distance(target_pos,0,1))
                         target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
                         self.set_move_and_attack(unit,target_pos_selected,model="force")
                         del target_pos_list_temp[i]
