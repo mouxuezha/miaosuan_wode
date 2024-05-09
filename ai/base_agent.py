@@ -1848,7 +1848,11 @@ class BaseAgent(ABC):
                 # self._move_action(attacker_ID, pos_next)
         else:
             # 那就是到了，那就要改抽象状态里面了。
-            self.__finish_abstract_state(attacker_ID)      
+            if "next" in self.abstract_state[attacker_ID]:
+                # 如果后续还有别的抽象状态，那就转过去。不然就转成open fire
+                self.__finish_abstract_state(attacker_ID)      
+            else:
+                self.set_open_fire(attacker_ID)
     
     def __handle_move_and_attack_UAV(self,attacker_ID,pos_next_list):
         # 这个是无人机的，怎么快怎么来，不要避障，不读势场。
