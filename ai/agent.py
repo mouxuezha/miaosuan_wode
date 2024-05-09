@@ -1130,8 +1130,17 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     def step_attack(self):
         # 先解决有无问题。F2A总会吧。
         print("step_jingong: successfully get in, self.num="+str(self.num))
+
         units = self.status["operators"] 
-        self.group_A2(units,[])        # 直接框框A过去。
+        jieju_flag = self.jieju_check(model="part", units=units)
+        # if self.num<500 and jieju_flag==False:
+        if jieju_flag==False and self.num<300:
+            # 那就是没解聚完，那就继续解聚。
+            for unit in units:
+                self.set_jieju(unit)
+        else:
+            self.group_A2(units,[])        # 直接框框A过去  。
+
         self.final_xiache(units) 
         return
     
@@ -1141,7 +1150,8 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         units = self.status["operators"]
         start_time = 1000
         if self.num < start_time:
-            self.group_A(units,target_pos)
+            self.target_pos = 2652
+            self.step_attack()
         else:
             self.num = self.num - start_time 
             # 然后假装防御一会儿.这就需要改成相对的路径了

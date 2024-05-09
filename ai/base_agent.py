@@ -2163,44 +2163,51 @@ class BaseAgent(ABC):
         # 这个之前是没有的。思路也是一样的，分状态分距离。# 而且这个需要好好整一下
         unit_infantry = self.get_bop(infantry_ID)
         unit_attacker = self.get_bop(attacker_ID)
-        # 一样的，接管步兵的控制权。在上车完成之前，步兵的抽象状态不再生效。
-        flag_infantry_exist = self.is_exist(infantry_ID)
-        if flag_infantry_exist:
-            self.set_none(infantry_ID,next=self.abstract_state[infantry_ID])
-            flag_state = 3 # finished xiache,
-        else:
-            pass 
-
-        # 然后启动超时check
-        flag_time_out = self._abstract_state_timeout_check(attacker_ID)
-        if flag_time_out:
+        # 一样的，接管步兵的控制权。步兵的抽象状态不再生效。
+        # TODO: 这里改成用valia action来检测。
+        if len(self._check_actions(unit_attacker, model="jieju"))==0 or len(unit_attacker["passenger_ids"]) ==0:
+            # 可行动作中没有跟上下车有关的，那就直接判定为结束好了。
             self.__finish_abstract_state(attacker_ID)
-            # self.__finish_abstract_state(infantry_ID)
-            return
+            flag_state = 3
+            return 
+        
+        # # 然后启动超时check
+        # 先关了看看情况。
+        # flag_time_out = self._abstract_state_timeout_check(attacker_ID)
+        # if flag_time_out:
+        #     self.__finish_abstract_state(attacker_ID)
+        #     # self.__finish_abstract_state(infantry_ID)
+        #     return
 
         if flag_state == 1:
             # 具备条件了，但是还没有发下车命令。那就发个下车指令然后开始等着。
-            # 没停车就停车，停车了就发指令。
-            if self.is_stop(attacker_ID) == False:
-                self._stop_action(attacker_ID)
-                # 停车，一直check到标志位变了，到停稳
-            else:
-                # 那就是停下了，那就发命令下车。
-                self._off_board_action(attacker_ID,infantry_ID)
-                self.abstract_state[attacker_ID]["num_wait"] = 75
-                # 发出命令之后等着。
-                flag_state = 2
-                self.abstract_state[attacker_ID]["flag_state"] = flag_state            
+            self._off_board_action(attacker_ID,infantry_ID)
+            self.abstract_state[attacker_ID]["num_wait"] = 75
+            # 发出命令之后等着。
+            flag_state = 2
+            self.abstract_state[attacker_ID]["flag_state"] = flag_state
+
+            # # 没停车就停车，停车了就发指令。
+            # if self.is_stop(attacker_ID) == False:
+            #     self._stop_action(attacker_ID)
+            #     # 停车，一直check到标志位变了，到停稳
+            # else:
+            #     # 那就是停下了，那就发命令下车。
+            #     self._off_board_action(attacker_ID,infantry_ID)
+            #     self.abstract_state[attacker_ID]["num_wait"] = 75
+            #     # 发出命令之后等着。
+            #     flag_state = 2
+            #     self.abstract_state[attacker_ID]["flag_state"] = flag_state            
             pass
-        elif flag_state == 2:
+        if flag_state == 2:
             # 发了下车命令了，正在等下车CD
             self.abstract_state[attacker_ID]["num_wait"] = self.abstract_state[attacker_ID]["num_wait"] - 1
-            if self.abstract_state[attacker_ID]["num_wait"]==1:
+            if self.abstract_state[attacker_ID]["num_wait"]<0:
                 # 说明下车下好了，转换状态
                 flag_state = 3
                 self.abstract_state[attacker_ID]["flag_state"] = flag_state       
             pass
-        elif flag_state == 3:
+        if flag_state == 3:
             # 下车下完了，就可以结束任务了。
             self.__finish_abstract_state(attacker_ID)
             # self.__finish_abstract_state(infantry_ID) # 结束对步兵的控制
