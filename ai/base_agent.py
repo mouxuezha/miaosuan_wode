@@ -2272,6 +2272,8 @@ class BaseAgent(ABC):
     def update_tasks(self):
         self.tasks = []
         for task in self.ob["communication"]:
+            if task["type"] in [204, 205]:
+                continue  # 204和205是聊天和渲染，不需要执行
             if (
                 task["seat"] == self.seat
                 and task["start_time"] <= self.time.cur_step < task["end_time"]
