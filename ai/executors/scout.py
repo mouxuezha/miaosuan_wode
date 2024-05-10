@@ -131,7 +131,7 @@ class ScoutExecutor:
         self.unscouted = set()
         self.air_num = 0
         self.air_traj = {}
-        self.enemy_pos = {}  # {obj_id: hex}
+        self.enemy_pos = {}  # {obj_id: [hex,last_fire_step]}
         self.units = {}  # {obj_id: [last, cur]}
         self.suspected = set()
         self.repeat_map = {} # 用于附加寻路代价，更倾向于探索未知区域
@@ -477,12 +477,22 @@ class ScoutExecutor:
     def check_enemy(self, agent):
         cur_enemy = set(agent.enemy.keys())
         old_enemy = set(self.enemy_pos.keys())
-        if len(cur_enemy):
-            new_enemy = cur_enemy - old_enemy
-            for obj_id in new_enemy:
-                enemy_hex = agent.enemy[obj_id]["cur_hex"]
-                print(f"!!!!!! step {self.num} find new enemy at {enemy_hex}!!!!!!")
-                
+        for obj_id in cur_enemy:
+            enemy_hex = agent.enemy[obj_id]["cur_hex"]
+            enemy_type = agent.enemy[obj_id]["type"]
+            if obj_id in old_enemy and enemy_hex == self.enemy_pos[obj_id][0]:
+                pass
+            else: # 新敌人或者敌人位置变化
+                if obj_id not in old_enemy:
+                    print(f"!!!!!! step {self.num} find new enemy {obj_id} at {enemy_hex}!!!!!!")
+                else: # 敌人位置变化，去掉旧的
+                    self.update_enemy_threat_area(agent, self.enemy_pos[obj_id][0], enemy_type, -1)
+                    msg_ids_to_del = []
+                    for x in agent.status["communication"]:
+                        if x["type"] == 205 and str(obj_id) in x["msg_body"]["description"]:
+                            msg_ids_to_del.append(x["msg_id"])
+                    agent.batch_del_xuanran(msg_ids_to_del)
+                # 新渲染                    
                 word = str(obj_id) + '\n' + agent.enemy[obj_id]["name"]#MyUnitSubType[agent.enemy[obj_id]["sub_type"]]
                 render = {
                     "actor": agent.seat,
@@ -496,14 +506,14 @@ class ScoutExecutor:
                     }  
                 }
                 agent.act.append(render)
-                if agent.enemy[obj_id]["type"] in [BopType.Infantry, BopType.Vehicle]:
-                    enemy_ob_area = agent.map.get_ob_area3(enemy_hex, agent.enemy[obj_id]["type"], BopType.Vehicle)
-                    shoot_area = list(agent.map.get_shoot_area(enemy_hex, agent.enemy[obj_id]["type"]))
+                if enemy_type in [BopType.Infantry, BopType.Vehicle]:
+                    enemy_ob_area = list(agent.map.get_ob_area3(enemy_hex, enemy_type, BopType.Vehicle))
+                    shoot_area = list(agent.map.get_shoot_area(enemy_hex, enemy_type))
                     ob_render = {
                         "actor": agent.seat,
                         "type": 205,
                         "msg_body": {
-                            "hexs": shoot_area, 
+                            "hexs": enemy_ob_area, 
                             "graphic_type": "see_range",
                             "description": str(obj_id) + " " + str(enemy_hex) + " ob range"
                         }  
@@ -519,8 +529,10 @@ class ScoutExecutor:
                     }
                     agent.act.append(ob_render)
                     agent.act.append(shoot_render)
-                 # suspect更新2
-                last_fire_step = 0
+                # suspect更新2
+            
+            last_fire_step = 0
+            if enemy_type in [BopType.Infantry, BopType.Vehicle]:
                 ids_to_pop = []
                 for i in range(len(self.suspect_hist)):
                     if enemy_hex in self.suspect_hist[i][1]:
@@ -535,23 +547,23 @@ class ScoutExecutor:
                         ids_to_pop.append(i)
                 for i in ids_to_pop[::-1]:
                     self.suspect_hist.pop(i)        
-                self.enemy_pos[obj_id] = [enemy_hex, last_fire_step]
-                self.update_enemy_threat_area(agent, enemy_hex, 1)
-            return 1
+            self.enemy_pos[obj_id] = [enemy_hex, last_fire_step]
+            self.update_enemy_threat_area(agent, enemy_hex, enemy_type, 1)
         # elif len(cur_enemy) < len(old_enemy):
         #     lost_enemy = old_enemy - cur_enemy
         #     for obj_id in lost_enemy:
         #         enemy_hex = self.enemy_pos.pop(obj_id)
         #         self.update_enemy_threat_area(agent, enemy_hex, -1)
         #     return -1
-        return 0
-    def update_enemy_threat_area(self, agent, enemy_hex, coeff=1):
+
+    
+    def update_enemy_threat_area(self, agent, enemy_hex, enemy_type, coeff=1):
         """
         根据敌人所处地形更新威胁地图，更新值是拍脑袋定的
         """
-        st_area = agent.map.get_shoot_area(enemy_hex, BopType.Vehicle) & set(self.area)
+        st_area = agent.map.get_shoot_area(enemy_hex, enemy_type) & set(self.area)
         for h in st_area:
-            if not agent.map.can_observe(h, enemy_hex, BopType.Vehicle, BopType.Vehicle):
+            if not agent.map.can_observe(h, enemy_hex, BopType.Vehicle, enemy_type):
                 self.threat_map[h] += 0.4 * coeff
             else:
                 self.threat_map[h] += 0.2 * coeff
@@ -565,16 +577,21 @@ class ScoutExecutor:
         def air_scout(obj_id, cur_hex):
             if len(self.air_traj[obj_id]):
                 destination = self.air_traj[obj_id].pop(0)
-            else:
+            elif self.unscouted:
                 destination = self.get_farthest(agent, cur_hex, self.unscouted)
+            else:
+                destination = random.choice(self.area)
             return destination
         
         # 车辆的侦察逻辑，优先可疑区域其次未探索，暂时随机选点，后续避开已知敌人射程？
         def vehicle_scout():
-            to_detected = (
-                list(self.suspected) if self.suspected else list(self.unscouted)
-            )
-            destination = random.choice(to_detected)
+            if self.suspected:
+                to_detect = list(self.suspected)
+            elif self.unscouted:
+                to_detect = list(self.unscouted)
+            else:
+                to_detect = self.area
+            destination = random.choice(to_detect)
             return destination
         
         self.num = agent.num

@@ -2267,7 +2267,7 @@ class BaseAgent(ABC):
     def update_tasks(self):
         self.tasks = []
         for task in self.ob["communication"]:
-            if task["type"] in [204, 205]:
+            if task["type"] not in [207, 208, 209, 210]:
                 continue  # 204和205是聊天和渲染，不需要执行
             if (
                 task["seat"] == self.seat
@@ -2345,6 +2345,16 @@ class BaseAgent(ABC):
         print("add_xuanran: unfinished yet")
         pass 
 
+    def batch_del_xuanran(self, ids):
+        """传入msg_id的列表，批量删除渲染，id就靠任务代码逻辑里自查了"""
+        for msg_id in ids:
+            self.act.append({
+                "actor": self.seat,
+                "type": 206,
+                "clearing_msg_id": msg_id 
+            })
+        # print(f"batch_del_xuanran: {ids}")
+        
 @dataclass
 class Time:
     """维护当前推演时间"""
