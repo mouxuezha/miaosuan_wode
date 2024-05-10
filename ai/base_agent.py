@@ -666,6 +666,24 @@ class BaseAgent(ABC):
         UAV_units = self.select_by_type(UAV_units,key="color",value=0)
         return UAV_units
     
+    def get_Z_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]         
+        Z_units = self.select_by_type(units_input,key="sub_type",value=8)
+        Z_units = self.select_by_type(Z_units,key="color",value=0)
+        return Z_units
+    
+    def get_WZ_units(self,**kargs):
+        if "units" in kargs:
+            units_input = kargs["units"]
+        else:
+            units_input = self.status["operators"]         
+        WZ_units = self.select_by_type(units_input,key="sub_type",value=6)
+        WZ_units = self.select_by_type(WZ_units,key="color",value=0)
+        return WZ_units
+        
     def get_qianpai_units(self,**kargs):
         if "units" in kargs:
             units_input = kargs["units"]
@@ -821,6 +839,16 @@ class BaseAgent(ABC):
             # 说明没东西可以打了
             flag_done = False
             return self.act, flag_done
+
+    def _change_altitude_action(self,attacker_ID,altitude):
+        action_gen = {
+        "actor": self.seat,
+        "obj_id": attacker_ID,
+        "type": 16,
+        "target_altitude": altitude
+        }
+        self._action_check_and_append(action_gen)
+        return self.act
 
     def _selecte_compare_list(self, target_ID, target_ID_list):
         # give an obj(target_ID) and a list(target_ID_list), if the obj is in the list, then reture it and its index. 
@@ -1973,9 +2001,14 @@ class BaseAgent(ABC):
 
         # 如果在机动，就停下来。
         flag_is_stop = self.is_stop(attacker_ID)
-        if not(flag_is_stop):
-            # 没有is stop就是在机动呗，那就停下来。
-            self._stop_action(attacker_ID)
+        unit = self.get_bop(attacker_ID)
+        if unit["sub_type"] == 0:
+            # 坦克能移动攻击所以不用停
+            pass
+        else:
+            if not(flag_is_stop):
+                # 没有is stop就是在机动呗，那就停下来。
+                self._stop_action(attacker_ID)
 
         # 这个写法相当于每一步都检测一次，能打就打
         # 在机动或者正在停的时候反正也检测不到有效的开火命令，所以这条空过几次感觉问题也不大
@@ -2059,33 +2092,35 @@ class BaseAgent(ABC):
                 self._stop_action(attacker_ID) 
                 # 这个stop其实不是很必要，会自己停下来的。
                 
-                # 然后引导打击
+                # 然后引导打击. bu 耦合了, try and ru.
                 # 开始耦合了，按理来说应该多给几个车发出停下指令，准备好打，还要考虑车面临的威胁高不高，还要考虑车里有没有兵。
                 # 但是这里先写个最垃圾的，如果无人机就位了，就把所有车都停了。而且是开环控制。
-                IFV_units = self.get_IFV_units()
-                for IFV_unit in IFV_units:
-                    # 按理来说直接这么写就完事了，虽然可能下一步才更新，但是反正得好几帧才能停下，不差这点了。
-                    next_IFV_abstract_state = copy.deepcopy(self.abstract_state[IFV_unit["obj_id"]])
-                    # 如果里面有步兵就不执行这个任务，没有步兵才执行。
-                    infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
-                    if len(infantry_ID_list) >0 :
-                        # 说明这个里面有兵，那原则上就不让它停下来等着打了。
-                        pass 
-                    else:
-                        # 说明这个里面没有兵
-                        self.set_open_fire(IFV_unit, next=next_IFV_abstract_state)
+                # IFV_units = self.get_IFV_units()
+                # for IFV_unit in IFV_units:
+                    # # 按理来说直接这么写就完事了，虽然可能下一步才更新，但是反正得好几帧才能停下，不差这点了。
+                    # next_IFV_abstract_state = copy.deepcopy(self.abstract_state[IFV_unit["obj_id"]])
+                    # # 如果里面有步兵就不执行这个任务，没有步兵才执行。
+                    # infantry_ID_list = IFV_unit["get_off_partner_id"]+IFV_unit["get_on_partner_id"] + IFV_unit["passenger_ids"]
+                    # if len(infantry_ID_list) >0 :
+                    #     # 说明这个里面有兵，那原则上就不让它停下来等着打了。
+                    #     pass 
+                    # else:
+                    #     # 说明这个里面没有兵
+                    #     self.set_open_fire(IFV_unit, next=next_IFV_abstract_state)
             else:
                 # 到这里原则上已经停好了，UAV和IFV都停好了
                 # 那就想想办法干它一炮
-                self.act, flag_done = self._guide_shoot_action(attacker_ID)
-                if flag_done==True:
-                    # 说明引导打击命令合法地发出去了，就认为是打出去了
-                    self.abstract_state[attacker_ID]["flag_attacked"] = True
-                    # 然后那几个IFV也不用挂着了，该干啥干啥去好了
-                    # 也是有隐患的，如果中间IFV的状态被改了而且next被清了，可能就要寄。
-                    IFV_units = self.get_IFV_units()
-                    for IFV_unit in IFV_units:
-                        self.__finish_abstract_state(IFV_unit)
+                self._fire_action(attacker_ID)
+                self.__finish_abstract_state(attacker_ID)
+                # self.act, flag_done = self._guide_shoot_action(attacker_ID)
+                # if flag_done==True:
+                #     # 说明引导打击命令合法地发出去了，就认为是打出去了
+                #     self.abstract_state[attacker_ID]["flag_attacked"] = True
+                #     # 然后那几个IFV也不用挂着了，该干啥干啥去好了
+                #     # 也是有隐患的，如果中间IFV的状态被改了而且next被清了，可能就要寄。
+                #     IFV_units = self.get_IFV_units()
+                #     for IFV_unit in IFV_units:
+                #         self.__finish_abstract_state(IFV_unit)
 
     def __handle_on_board(self,attacker_ID, infantry_ID, flag_state):
         # 这个得细心点弄一下。
@@ -2112,11 +2147,19 @@ class BaseAgent(ABC):
             return
         
         jvli = self.distance(attacker_pos,infantry_pos)  
-
+        unit_IFV = self.get_bop(attacker_ID)
         if flag_state == 1:
             # 没上车且距离远，那就得过去。
             if jvli < 1:
                 # 那就是到了，转变为可以上车的状态。
+
+                # helicopter must take off first.
+                if unit_IFV["sub_type"] == 8:
+                    if unit_IFV["altitude"] == 20:
+                        pass # now infantry can get on board
+                    else:
+                        self._change_altitude_action(attacker_ID, 20)
+                        return
 
                 # 上车命令。
                 self._on_board_action(attacker_ID,infantry_ID)
@@ -2141,7 +2184,7 @@ class BaseAgent(ABC):
             else:
                 if jvli < 1:
                     # 那就是到了，那就上车。
-                    self._stop_action(attacker_ID)
+                    # self._stop_action(attacker_ID)
                     self._on_board_action(attacker_ID,infantry_ID)
                     # self._stop_action(infantry_ID)
                     self.abstract_state[attacker_ID]["num_wait"] = 75
@@ -2181,6 +2224,13 @@ class BaseAgent(ABC):
 
         if flag_state == 1:
             # 具备条件了，但是还没有发下车命令。那就发个下车指令然后开始等着。
+            # helicopter must take off first.
+            if unit_attacker["sub_type"] == 8:
+                if unit_attacker["altitude"] == 20:
+                    pass # now infantry can get on board
+                else:
+                    self._change_altitude_action(attacker_ID, 20)
+                    return
             self._off_board_action(attacker_ID,infantry_ID)
             self.abstract_state[attacker_ID]["num_wait"] = 75
             # 发出命令之后等着。
