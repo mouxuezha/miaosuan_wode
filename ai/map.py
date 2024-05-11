@@ -368,6 +368,8 @@ class Map:
         """
         st_area = []
         radius = max_shoot_range[unit_type - 1]
+        if radius == 0:
+            return set()
         max_area = self.get_grid_distance(center, 0, radius)
         # 其实还没想好要这个干嘛
         if exclude_area:

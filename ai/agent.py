@@ -1019,7 +1019,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
 
         # self.update_time()
         # self.update_tasks()
-        print("step_scout: successfully get in, self.num="+str(self.num))
+        # print("step_scout: successfully get in, self.num="+str(self.num))
 
         if not self.tasks:
             return []  # 如果没有任务则待命
@@ -1030,7 +1030,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     
     def step_attack(self):
         # 先解决有无问题。F2A总会吧。
-        print("step_jingong: successfully get in, self.num="+str(self.num))
+        # print("step_jingong: successfully get in, self.num="+str(self.num))
 
         units = self.status["operators"]    
         IFV_units = self.get_IFV_units()
@@ -1071,7 +1071,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         else:
             self.num = self.num - start_time 
             # 然后假装防御一会儿.这就需要改成相对的路径了
-            self.step_defend()
+            # self.step_defend()
 
             self.num = self.num + start_time 
 
