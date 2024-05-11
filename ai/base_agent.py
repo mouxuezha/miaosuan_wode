@@ -574,7 +574,8 @@ class BaseAgent(ABC):
         units_arrived = [] 
         flag_arrive = True
         for unit in units:
-            if abs(unit["cur_hex"] - target_pos) <= tolerance :
+            jvli = self.distance(unit["cur_hex"],target_pos)
+            if jvli <= tolerance :
                 units_arrived.append(unit)
             else:
                 flag_arrive = False
@@ -1251,9 +1252,14 @@ class BaseAgent(ABC):
             my_abstract_state = self.abstract_state[my_ID]
             if my_abstract_state == {}:
                 # 默认状态的处理, it still needs discuss, about which to use.
-                # self.set_hidden_and_alert(my_ID)
-                self.set_none(my_ID) 
-                # self.set_jieju(my_ID) 
+                unit = self.get_bop(my_ID)
+                if unit["sub_type"] == 2:
+                    self.set_open_fire(my_ID) 
+                else:
+                    # self.set_hidden_and_alert(my_ID)
+                    self.set_none(my_ID) 
+                    # self.set_open_fire(my_ID) 
+                    # self.set_jieju(my_ID) 
             else:
                 # 实际的处理
                 my_abstract_state_type = my_abstract_state["abstract_state"]
@@ -1663,6 +1669,9 @@ class BaseAgent(ABC):
         else:
             # 如果不是可下车的装备类型，那就不改抽象状态了，直接无事发生返回了。
             return
+        if "abstract_state" in self.abstract_state[attacker_ID]:
+            if self.abstract_state[attacker_ID]["abstract_state"] == "off_board":
+                return
 
         self.abstract_state[attacker_ID] = {"abstract_state": "off_board",
                                                 "infantry_ID": infantry_ID,
@@ -1789,7 +1798,12 @@ class BaseAgent(ABC):
         attacker_pos = self.get_pos(attacker_ID)
         # if arrived, then stay.
         if np.linalg.norm(vector_xy) <0.000001:
-            self.__finish_abstract_state(attacker_ID)
+            # 那就是到了，那就要改抽象状态里面了。
+            if "next" in self.abstract_state[attacker_ID]:
+                # 如果后续还有别的抽象状态，那就转过去。不然就转成open fire
+                self.__finish_abstract_state(attacker_ID)      
+            else:
+                self.set_open_fire(attacker_ID)
             return 
         # 来个来个向量运算，计算出周围一圈点中，符合威胁度要求的点中，最符合向量的一个。
         # 有威胁就开这个，没威胁就找出最符合向量的
@@ -2064,6 +2078,7 @@ class BaseAgent(ABC):
         # 如果已经打了一个引导打击了，那就退出去。不然就继续无人机出击。
         if self.abstract_state[attacker_ID]["flag_attacked"]==True:
             self.__finish_abstract_state(attacker_ID)
+            self.set_open_fire(attacker_ID)
             return 
 
         # check一下停止的时长。
@@ -2072,6 +2087,7 @@ class BaseAgent(ABC):
         if self.abstract_state[attacker_ID]["stopped_time"]>100:
             # 总的停止时长如果超过一个阈值，就不玩了，直接结束这个状态。
             self.__finish_abstract_state(attacker_ID)
+            self.set_open_fire(attacker_ID)
             return
         
         # 前面那些check都过了，再来说函数实现的事情。
@@ -2207,10 +2223,11 @@ class BaseAgent(ABC):
         unit_infantry = self.get_bop(infantry_ID)
         unit_attacker = self.get_bop(attacker_ID)
         # 一样的，接管步兵的控制权。步兵的抽象状态不再生效。
-        # TODO: 这里改成用valia action来检测。
-        if len(self._check_actions(unit_attacker, model="jieju"))==0 or len(unit_attacker["passenger_ids"]) ==0:
+        # if len(self._check_actions(attacker_ID, model="board"))==0 or len(unit_attacker["passenger_ids"]) ==0:
+        if len(unit_attacker["passenger_ids"]) ==0:
             # 可行动作中没有跟上下车有关的，那就直接判定为结束好了。
             self.__finish_abstract_state(attacker_ID)
+            self.set_open_fire(infantry_ID)
             flag_state = 3
             return 
         
@@ -2224,6 +2241,9 @@ class BaseAgent(ABC):
 
         if flag_state == 1:
             # 具备条件了，但是还没有发下车命令。那就发个下车指令然后开始等着。
+            if self.is_stop(attacker_ID) == False:
+                self._stop_action(attacker_ID)
+                return 
             # helicopter must take off first.
             if unit_attacker["sub_type"] == 8:
                 if unit_attacker["altitude"] == 20:
@@ -2237,10 +2257,10 @@ class BaseAgent(ABC):
             flag_state = 2
             self.abstract_state[attacker_ID]["flag_state"] = flag_state
 
-            # # 没停车就停车，停车了就发指令。
-            # if self.is_stop(attacker_ID) == False:
-            #     self._stop_action(attacker_ID)
-            #     # 停车，一直check到标志位变了，到停稳
+            # 没停车就停车，停车了就发指令。
+            if self.is_stop(attacker_ID) == False:
+                self._stop_action(attacker_ID)
+                # 停车，一直check到标志位变了，到停稳
             # else:
             #     # 那就是停下了，那就发命令下车。
             #     self._off_board_action(attacker_ID,infantry_ID)
@@ -2260,6 +2280,7 @@ class BaseAgent(ABC):
         if flag_state == 3:
             # 下车下完了，就可以结束任务了。
             self.__finish_abstract_state(attacker_ID)
+            self.set_open_fire(infantry_ID)
             # self.__finish_abstract_state(infantry_ID) # 结束对步兵的控制
 
     def __finish_abstract_state(self, attacker_ID):
@@ -2272,7 +2293,8 @@ class BaseAgent(ABC):
         else:
             # 这个是用来处理步兵上下车逻辑的。上车之后删了，下车之后得出来
             # self.abstract_state[attacker_ID] = {}  # 统一取成空的，后面再统一变成能用的。
-            self.set_none(attacker_ID)
+            # self.set_none(attacker_ID)
+            self.set_open_fire(attacker_ID)
 
         if "next" in self.abstract_state[attacker_ID]:
             next_abstract_state = self.abstract_state[attacker_ID]['next']

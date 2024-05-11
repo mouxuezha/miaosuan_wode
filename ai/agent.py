@@ -118,14 +118,18 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     def F2A(self,target_pos):
         units = self.status["operators"]
         for unit in units:
-            self.set_move_and_attack(unit,target_pos,model="force")
+            target_pos_candidate = list(self.map.get_grid_distance(self.target_pos,1,2))
+            target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]            
+            self.set_move_and_attack(unit,target_pos_selected,model="force")
             # A了A了，都这时候了还要个毛的脑子，直接头铁
         pass
 
     def group_A(self, units,target_pos, model='normal'):
         # print("group_A: unfinished yet")
         for unit in units:
-            self.set_move_and_attack(unit,target_pos,model=model)
+            target_pos_candidate = list(self.map.get_grid_distance(self.target_pos,1,2))
+            target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]   
+            self.set_move_and_attack(unit,target_pos_selected,model=model)
         return
 
         # 这里需要一个新的结阵逻辑。
@@ -175,7 +179,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 # 那就是被跟随的已经被杀完了，那就无所谓了
                 if model=="random":
                     # 来点随机性，防止全都堆在一起。
-                    target_pos_candidate = list(self.map.get_grid_distance(self.target_pos,0,1))
+                    target_pos_candidate = list(self.map.get_grid_distance(self.target_pos,1,2))
                     target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
                     self.set_move_and_attack(unit,target_pos_selected,model="force")
                 else:
@@ -189,7 +193,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                 jvli_min = min(jvli_list)
                 index_min = jvli_list.index(jvli_min)
                 VIP_pos_single = units_VIP[index_min]["cur_hex"]
-                target_pos_candidate = list(self.map.get_grid_distance(VIP_pos_single,0,1))
+                target_pos_candidate = list(self.map.get_grid_distance(VIP_pos_single,1,2))
                 target_pos_selected = target_pos_candidate[random.randint(0,len(target_pos_candidate)-1)]
                 self.set_move_and_attack(unit,target_pos_selected,model="force")
 
@@ -456,8 +460,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             try:
                 king_abstract_state = self.abstract_state[king_ID]["abstract_state"]
             except:
-                king_abstract_state = "none"
-                self.set_none(king_ID)
+                # king_abstract_state = "none"
+                # self.set_none(king_ID)
+                king_abstract_state = "open_fire"
+                self.set_open_fire(king_ID)
 
             if king_abstract_state == "juhe":
                 # this one has juheing.
@@ -471,6 +477,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
                     except:
                         knight_abstract_state = "none"
                         self.set_none(knight_ID)
+                    
  
                     if (knight_abstract_state == "move_and_attack" and "next" in self.abstract_state[knight_ID]) or knight_abstract_state == "juhe" or (knight_ID==king_ID):
                         # this knight has his lord.
@@ -485,31 +492,40 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
     def final_xiache(self, units):
         # 这个是最后加个下车。
         # 改改逻辑，谁到了谁就下，不要等都到了才下。
-        if self.num < 100:
+        if self.num < 500:
             return
         
         for unit in units:
             # 判断到没到
-            flag_arrived, units_arrived = self.is_arrive([unit],self.target_pos,tolerance = 3 )
+            flag_arrived, units_arrived = self.is_arrive([unit],self.target_pos,tolerance = 5 )
             if flag_arrived == False:
                 # 没到就算了
-                return
+                continue
+                
             
             # 判断停没停
-            flag_is_stop = self.is_stop(unit)
+            flag_is_stop = self.is_stop(unit["obj_id"])
             if flag_is_stop == False:
                 # 没停就算了
-                return
+                # self.set_off_board(unit["obj_id"])
+                if self.abstract_state[unit["obj_id"]]["abstract_state"]!="off_board":
+                    self._stop_action(unit["obj_id"])
+                    self.set_none(unit["obj_id"])
+                    continue 
 
             # 判断能不能下车
-            flag_can_xiache = (len(unit["passenger_ids"])>0)
+            valid_actions = self._check_actions(unit["obj_id"], model="board")
+            flag_can_xiache = (len(valid_actions)>0)
             if flag_can_xiache == False:
-                # 不能就算了
-                return
+                # 不能就算了,go to next random point
+                # self.group_A([unit],self.target_pos+2)
+                continue
 
             # 发下车指令
-            # self.set_off_board(unit) # 防止把别的抽象状态盖了，直接发好了，虽然很丑
-            self._off_board_action(unit["obj_id"], unit["passenger_ids"][0])
+            self.set_off_board(unit) # 防止把别的抽象状态盖了，直接发好了，虽然很丑
+            # it doesn't matter, just using set_off_board
+            # self._off_board_action(unit["obj_id"], unit["passenger_ids"][0])
+            self.set_open_fire(unit["passenger_ids"][0])
 
     def UAV_patrol(self, target_pos,**kargs):
         # 这个会覆盖给无人机的其他命令，优先执行“飞过去打一炮”，然后再把别的命令弄出来。
@@ -517,7 +533,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         # 不要重复下命令，不然就把时间都刷没了
 
         # 先把UAV取出来
-        if UAV_units in kargs:
+        if "UAV_units" in kargs:
             UAV_units = kargs["UAV_units"]
         else:
             UAV_units = self.get_UAV_units()
@@ -528,7 +544,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             target_pos = target_unit["cur_hex"]
             # 然后设定状态就开始过去了。
             for UAV_unit in UAV_units:
-                if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
+                if "abstract_state" in self.abstract_state[UAV_unit["obj_id"]]:
+                    if self.abstract_state[UAV_unit["obj_id"]]["abstract_state"]!="UAV_move_on":
+                        self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos)
+                else:
                     self.set_UAV_move_on(UAV_unit["obj_id"],target_pos=target_pos)
         else:
             # if nothing detected, then nothing happen.
@@ -686,7 +705,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             try:
                 abstract_state_single = self.abstract_state[unit["obj_id"]]
             except:
-                self.set_none(unit["obj_id"])
+                if self.num < 500:
+                    self.set_none(unit["obj_id"])
+                else:
+                    self.set_open_fire(unit["obj_id"])
                 abstract_state_single = self.abstract_state[unit["obj_id"]]
 
             if "abstract_state" in abstract_state_single:
@@ -927,7 +949,7 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         flag_on,flag_off = self.IFV_transport_check(infantry_units=infantry_units, IFV_units=transport_helicopter_units)
         jieju_flag2 = self.jieju_check(model="part", units=transport_helicopter_units)        
 
-        if flag_on==False:
+        if flag_on==False and self.num<300:
             # 如果刚开始且没上车，那就先上车
             self.IFV_transport(model="on", infantry_units=infantry_units, IFV_units=transport_helicopter_units)
         elif flag_on==True and self.num<300:
@@ -954,6 +976,11 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
         elif self.num > 300 and self.num<1500:
             # self.group_A(others_units,target_pos,model="force")
             self.group_A2(others2_units,qianpai_units)
+        if (self.num > 300 or flag_on==True) and self.num<600:
+            # self.group_A2(transport_helicopter_units,[])
+            self.group_A(transport_helicopter_units,self.target_pos+2,model="force")
+        elif self.num>600:
+            self.final_xiache(transport_helicopter_units)
 
         if jieju_flag2 == True:
             self.list_A(qianpai_units,target_pos)
@@ -965,12 +992,12 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # self.F2A(target_pos)
             # pass # disabled for tiaoshi
             # 改成疯狂开火的
-            if self.num % 114 == 5 :            
+            if self.num % 114 == 5 and True:            
                 for unit in units:
                     jvli = self.distance(unit["cur_hex"], self.target_pos)
-                    if jvli < 4: 
+                    if jvli < 10: 
                         self.set_open_fire(unit)
-            self.final_xiache(IFV_units)
+
             
         if (self.num % 100==0) and (self.num>-200) and (self.num<1000):
             # 保险起见，等什么上车啊解聚啊什么的都完事儿了，再说别的。
@@ -1018,10 +1045,10 @@ class Agent(BaseAgent):  # TODO: 换成直接继承BaseAgent，解耦然后改�
             # 那就是没解聚完，那就继续解聚。
             for unit in units:
                 self.set_jieju(unit)
-        if self.num==301:
+        if self.num>300 and self.num<1300:
             self.group_A2(units,[])        # 直接框框A过去  。
             self.group_A2(others_units,[],model="constant")
-        if self.num==1300:
+        if self.num>1300:
             self.final_xiache(IFV_units) 
         if self.num % 114 == 5 and self.num>1300 :
             for unit in units:

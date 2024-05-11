@@ -163,7 +163,7 @@ class auto_run():
         see_data = numpy.load(self.starter_kit_location + "/data/maps/2022081021/see.npz")['data']
 
         # varialbe to build replay
-        all_states = []
+        self.all_states = []
 
         # player setup info
         player_info = [{
@@ -192,7 +192,7 @@ class auto_run():
 
         # setup env
         state = env1.setup(env_step_info)
-        all_states.append(state[self.white_flag])
+        self.all_states.append(state[self.white_flag])
         print("Environment is ready.")
 
         # setup AIs
@@ -264,7 +264,7 @@ class auto_run():
             actions += red1.step(state[self.red_flag])
             actions += blue1.step(state[self.blue_flag])
             state, done = env1.step(actions)
-            all_states.append(state[self.white_flag])
+            self.all_states.append(state[self.white_flag])
 
         env1.reset()
         red1.reset()
