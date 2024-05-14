@@ -437,11 +437,12 @@ class TD3Learner:
 
         # 定义buffer
         self.buffer = ReplayBuffer(**config)
-        # try to load exsiting buffer 
-        try:
-            self.buffer.load_buffer()
-        except:
-            print("No buffer to load!")
+        # # try to load exsiting buffer 
+        # 不用了，初始化的时候会自动load的。
+        # try:
+        #     self.buffer.load_buffer()
+        # except:
+        #     print("No buffer to load!")
         self.start_buffer_size = config["start_buffer_size"]
 
         # 学习管理
