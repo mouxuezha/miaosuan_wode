@@ -110,7 +110,16 @@ class ReplayBuffer(object):
         # 定义线程锁
         self.lock = threading.Lock()
 
-
+    def get_buffer_size(self):
+        # xxh added this to calculate the existing buffer size.
+        buffer_size_tmp = 0 
+        r_array = self.buffers["r"]
+        for i in range(len(r_array)):
+            if r_array[i] > -100000 and r_array[i]<100000:
+                # valid r
+                buffer_size_tmp = buffer_size_tmp +1 
+        
+        return buffer_size_tmp
 
     def prepare(self, **kwargs):
         self.n_agents = len(kwargs["possible_agents"])
@@ -120,7 +129,8 @@ class ReplayBuffer(object):
         self.obs_shape = kwargs["obs_shape"]
         self.buffers = {
             "s": np.empty([self.buffer_size, *self.state_shape]),
-            "r": np.empty([self.buffer_size, 1]),
+            # "r": np.empty([self.buffer_size, 1]),
+            "r": np.zeros([self.buffer_size, 1])-115414,
             "a": np.empty([self.buffer_size, *self.n_actions]),
             "s_next": np.empty([self.buffer_size, *self.state_shape]),
             "terminated": np.empty([self.buffer_size, 1]),
@@ -166,6 +176,7 @@ class ReplayBuffer(object):
         return temp_buffer
 
     def _get_storage_idx(self, inc):
+        # mingming yong duilie jiuxing, gao de zheme danten. 
         inc = inc or 1
         if self.current_idx + inc <= self.buffer_size:
             idx = np.arange(self.current_idx, self.current_idx + inc)
@@ -203,6 +214,7 @@ class ReplayBuffer(object):
         file = open(file_name, "rb")
         self.buffers = pickle.load(file)
         file.close()
+        self.current_size = self.get_buffer_size()
 
 class TD3Actor:
     def __init__(self, config):
