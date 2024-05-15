@@ -62,7 +62,7 @@ class EnvForRL(object):
         self.obj_num_real = self.red_obj_num_max + self.blue_obj_num_max
         self.red_obs_dim = self.red_obj_num_max * 7 
         self.blue_obs_dim = self.blue_obj_num_max * 7 
-        self.state_dim = self.red_obs_dim+ self.blue_obs_dim + 1  # temp set  # 多出一个维度的时间戳。
+        self.state_dim = self.red_obs_dim+ self.blue_obs_dim + 2  # temp set  # 多出一个维度的时间戳。and 2 dim for target_xy
         # self.state_dim = len(self.red_ID) * 2 + len(self.blue_ID) * 2          
         # self.get_target_cross_fire()
 
@@ -261,8 +261,12 @@ class EnvForRL(object):
         # get state_real from state_dict,
         self.state = self.reset_state() 
 
-        index_now = 0  # shoudong laige zhizheng      
-        self.state[index_now] = self.target_pos
+        index_now = 0  # shoudong laige zhizheng   
+        target_xy =  hex_to_xy(self.target_pos)  
+        self.state[index_now:index_now+2] = target_xy[:]
+        index_now = index_now + 2  
+
+        self.state[index_now:index_now+1] = self.num
         index_now = index_now + 1  
         
         # reset the self.state to avoid dimension dismatch. 

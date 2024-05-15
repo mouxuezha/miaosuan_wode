@@ -610,15 +610,18 @@ class TD3Learner:
 
             # 啥玩意？所以不用一边填充buffer一边从中采样？所以和环境互动的咋说。
             # 没毛病，论文里就是一边填充buffer一遍和环境互动
-            is_done = self.interaction_with_env(self.env, state)
+            is_done,next_state = self.interaction_with_env(self.env, state)
+            state = copy.deepcopy(next_state)
+            
             buffer_size = self.buffer.get_current_size()
             if buffer_size<self.start_buffer_size:
                 if is_done == True:
                     print("buffer is not full, but the episode is done. ")
                     break
                 continue  # 不慌开始训练，先把buffer填了。
-
-
+            
+            
+  
             # 从buffer中采样学习
             mini_batch = self.buffer.sample(self.batch_size)
 
@@ -1030,7 +1033,7 @@ class TD3Learner:
         # 然后再检测一下buffer里面的个数？如果个数够了再进行之后的训练，如果不够，那就先不慌。
         # buffer_size = self.buffer.get_current_size()
         # print("xxh modified, unfinished yet")
-        return is_done
+        return is_done, next_state
 
     def interaction_with_env2(self, env, state):
         # 这个是用来测试和实际用的时候搞的，就不加什么奇奇怪怪的东西了。
