@@ -110,7 +110,16 @@ class ReplayBuffer(object):
         # 定义线程锁
         self.lock = threading.Lock()
 
-
+    def get_buffer_size(self):
+        # xxh added this to calculate the existing buffer size.
+        buffer_size_tmp = 0 
+        r_array = self.buffers["r"]
+        for i in range(len(r_array)):
+            if r_array[i] > -100000 and r_array[i]<100000:
+                # valid r
+                buffer_size_tmp = buffer_size_tmp +1 
+        
+        return buffer_size_tmp
 
     def prepare(self, **kwargs):
         self.n_agents = len(kwargs["possible_agents"])
@@ -120,7 +129,8 @@ class ReplayBuffer(object):
         self.obs_shape = kwargs["obs_shape"]
         self.buffers = {
             "s": np.empty([self.buffer_size, *self.state_shape]),
-            "r": np.empty([self.buffer_size, 1]),
+            # "r": np.empty([self.buffer_size, 1]),
+            "r": np.zeros([self.buffer_size, 1])-115414,
             "a": np.empty([self.buffer_size, *self.n_actions]),
             "s_next": np.empty([self.buffer_size, *self.state_shape]),
             "terminated": np.empty([self.buffer_size, 1]),
@@ -166,6 +176,7 @@ class ReplayBuffer(object):
         return temp_buffer
 
     def _get_storage_idx(self, inc):
+        # mingming yong duilie jiuxing, gao de zheme danten. 
         inc = inc or 1
         if self.current_idx + inc <= self.buffer_size:
             idx = np.arange(self.current_idx, self.current_idx + inc)
@@ -203,6 +214,7 @@ class ReplayBuffer(object):
         file = open(file_name, "rb")
         self.buffers = pickle.load(file)
         file.close()
+        self.current_size = self.get_buffer_size()
 
 class TD3Actor:
     def __init__(self, config):
@@ -599,15 +611,18 @@ class TD3Learner:
 
             # 啥玩意？所以不用一边填充buffer一边从中采样？所以和环境互动的咋说。
             # 没毛病，论文里就是一边填充buffer一遍和环境互动
-            is_done = self.interaction_with_env(self.env, state)
+            is_done,next_state = self.interaction_with_env(self.env, state)
+            state = copy.deepcopy(next_state)
+            
             buffer_size = self.buffer.get_current_size()
             if buffer_size<self.start_buffer_size:
                 if is_done == True:
                     print("buffer is not full, but the episode is done. ")
                     break
                 continue  # 不慌开始训练，先把buffer填了。
-
-
+            
+            
+  
             # 从buffer中采样学习
             mini_batch = self.buffer.sample(self.batch_size)
 
@@ -1019,7 +1034,7 @@ class TD3Learner:
         # 然后再检测一下buffer里面的个数？如果个数够了再进行之后的训练，如果不够，那就先不慌。
         # buffer_size = self.buffer.get_current_size()
         # print("xxh modified, unfinished yet")
-        return is_done
+        return is_done, next_state
 
     def interaction_with_env2(self, env, state):
         # 这个是用来测试和实际用的时候搞的，就不加什么奇奇怪怪的东西了。
