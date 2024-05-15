@@ -157,6 +157,7 @@ class ReplayBuffer(object):
             self.buffers["s"][idxs] = episode_batch["s"]
             self.buffers["r"][idxs] = episode_batch["r"]
             self.buffers["a"][idxs] = episode_batch["a"]
+            self.data_check(episode_batch["a"])
             self.buffers["s_next"][idxs] = episode_batch["s_next"]
             self.buffers["terminated"][idxs] = episode_batch["terminated"]
             self.buffers["info"]["episodes_rewards"][self.episode_idx] = episode_batch["info"]["episode_rewards"]
@@ -165,6 +166,21 @@ class ReplayBuffer(object):
         # # xxh 1014不保熟.不加个这个的话似乎self.current_size不更新。# 然而不是，更新的。
         # self.current_size = self.current_size + batch_size
 
+    def data_check(self,data_array):
+        # 检查数据是否为nan。this is for debug.
+        nan_num = np.sum(np.isnan(data_array))
+        if nan_num > 0:
+            raise Exception("data_check: nan detected")
+            # return True
+        else:
+            pass 
+            # return False
+        
+        # check if there is any inf in data_array
+        inf_num = np.sum(np.isinf(data_array))
+        if inf_num > 0:
+            raise Exception("data_check: inf detected")
+            # return True
 
     def sample(self, batch_size):
         mini_size = min(batch_size, self.current_size)
@@ -173,6 +189,7 @@ class ReplayBuffer(object):
         for key in self.buffers.keys():
             if key != "info":
                 temp_buffer[key] = self.buffers[key][idx]
+        self.data_check(temp_buffer["a"])
         return temp_buffer
 
     def _get_storage_idx(self, inc):
@@ -639,14 +656,14 @@ class TD3Learner:
                 plt.plot(learn_steps, self.actor_loss)
                 plt.xlabel("learn_steps(*10)")
                 plt.ylabel("actor_loss")
-                plt.savefig(self.results_path + r"\actor_loss.png")
+                plt.savefig(self.results_path + r"/actor_loss.png")
                 plt.close()
                 self.critic_loss.append(critic_loss)
                 learn_steps = list(range(len(self.critic_loss)))
                 plt.plot(learn_steps, self.critic_loss)
                 plt.xlabel("learn_steps(*10)")
                 plt.ylabel("critic_loss")
-                plt.savefig(self.results_path + r"\critic_loss.png")
+                plt.savefig(self.results_path + r"/critic_loss.png")
                 plt.close()
                 if self.learn_steps % 100 == 0:
                     with open(self.results_path + r"loss_data.csv", "w") as csvfile:
