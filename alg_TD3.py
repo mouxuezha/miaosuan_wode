@@ -232,6 +232,10 @@ class ReplayBuffer(object):
         self.buffers = pickle.load(file)
         file.close()
         self.current_size = self.get_buffer_size()
+        if self.current_size < self.buffer_size:
+            self.current_idx = self.current_size
+        else:
+            self.current_idx = 0
 
 class TD3Actor:
     def __init__(self, config):
@@ -631,6 +635,8 @@ class TD3Learner:
             state = copy.deepcopy(next_state)
             
             buffer_size = self.buffer.get_current_size()
+            print("buffer_size: "+ str(buffer_size))
+            print("buffer_index: "+ str(self.buffer.current_idx))
             if buffer_size<self.start_buffer_size:
                 if is_done == True:
                     print("buffer is not full, but the episode is done. ")
