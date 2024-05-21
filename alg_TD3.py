@@ -656,6 +656,11 @@ class TD3Learner:
             if self.learn_steps % 10 == 0:
                 print("learn_steps = {}, actor_loss = {}, critic_loss = {},".format(
                         self.learn_steps, actor_loss, critic_loss))
+                # check if the  training failed 
+                if actor_loss > 10e7 or critic_loss > 10e7:
+                    print("TD3Leearner.train: loss check G.")
+                    break 
+                    # raise Exception("loss check G.")
                 self.actor_loss.append(actor_loss)
                 learn_steps = list(range(len(self.actor_loss)))
                 plt.plot(learn_steps, self.actor_loss)
