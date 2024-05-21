@@ -46,7 +46,7 @@ def get_defualt_value():
 
     config["start_buffer_size"] = 3000
     config["buffer_size"] = config["start_buffer_size"] * 10
-    config["episode_limit"] = 18 #  9999
+    config["episode_limit"] = 514 #  9999
 
     config = get_defualt_value_TD3Actor(config)
 
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     
     # 思路打开，也不是说非要gym不可，心中有gym，到处都是gym
 
-    flag = 0
+    flag = 1
     if flag == 0:
         while(True):
             config = get_defualt_value()
