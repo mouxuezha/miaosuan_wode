@@ -1091,6 +1091,32 @@ class TD3Learner:
 
         return episode
 
+    def tuiyan_single(self):
+        # 这个就是单纯的推一把，返回东西到外面用于储存和分析结果。
+        total_actor_loss, total_critic_loss = 0, 0
+        state = self.env.reset()  # xxh 1014 不保熟。
+
+        # 算一下推演步数，不用太多
+        tuiyan_num = 2800 // self.env.shadow_step_num[0] + 1
+
+        all_states = []
+
+        # 然后就真的开始打一把了。
+        for i in range(tuiyan_num):
+            
+            print("tuiyan_single: number {}/{}".format(i, tuiyan_num))
+            
+            is_done,next_state = self.interaction_with_env2(self.env, state)
+            state = copy.deepcopy(next_state)
+            all_states.append(self.env.state_dict[self.env.white_flag])
+            
+            # 退出机制还是要有的
+            if is_done:
+                break
+        
+        # 返回回去。
+        return all_states
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.ndarray):

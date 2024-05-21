@@ -3,6 +3,7 @@ from alg_TD3 import TD3Learner
 import numpy as np
 import os
 
+from auto_run import record_result, save_replay
 
 def get_defualt_value():
 
@@ -121,6 +122,38 @@ def continue_train(location = r"./RLtraining/models0"):
 
     # 读取已有的智能体
     agent.train_auto()
+
+def auto_test(location = r"./RLtraining/models0", jieguo_location = r"./RLtraining/jieguo"):
+    # 这个是自动的推演，给出一个agent，那就可以加载这个agent，然后进行推演。
+    
+    # 初始化一个用来后处理的class
+    jieguo = record_result()
+    jieguo.record_config("test RL crossfire, location = " + location)
+
+    # 上来先把环境初始化出来，
+    env = EnvForRL()
+    env_params = get_defualt_value_env(env)
+    
+    # 然后把agent加载进来，上来先初始化一波各种设定
+    config = get_defualt_value()
+    config["env"] = env  # 按照xxh之前的习惯，还是把环境直接弄进里面去比较合适。
+    config["results_path"] = location
+    config["load_model"] = True   
+    agent = TD3Learner(**config)
+    agent.prepare(**env_params) # 读取这一步体现在这里面了
+
+    # 然后开始推演了
+    tuiyan_num = 114 # 推演的局数先设定一个
+    for i in range(tuiyan_num):
+        all_state = agent.tuiyan_single()
+
+        zip_name = "tuiyan_" + str(i)
+        zip_name = save_replay(zip_name,all_state)
+
+        jieguo.get_result_single(all_state,zip_name)
+        print("tuiyan_" + str(i) + " done, everyting looks ok. \n\n\n\n\n")
+        
+    jieguo.get_result_all(jieguo.all_games)
 
 if __name__ == "__main__":
     
