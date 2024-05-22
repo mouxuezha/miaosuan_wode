@@ -21,11 +21,11 @@ import pickle
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Actor, self).__init__()
-        self.l1 = nn.Linear(state_dim, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, action_dim)
-        self.ln1 = nn.LayerNorm(256)
-        self.ln2 = nn.LayerNorm(256)
+        self.l1 = nn.Linear(state_dim, 512)
+        self.l2 = nn.Linear(512, 512)
+        self.l3 = nn.Linear(512, action_dim)
+        self.ln1 = nn.LayerNorm(512)
+        self.ln2 = nn.LayerNorm(512)
         self.max_action = 1
 
     def forward(self, state):
@@ -41,17 +41,17 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         # 硬编码网络结构吗……算了也不是不行
         # Q1 architecture
-        self.l1 = nn.Linear(state_dim + action_dim, 256)
-        self.l2 = nn.Linear(256, 256)
-        self.l3 = nn.Linear(256, 1)
-        self.ln1 = nn.LayerNorm(256)
-        self.ln2 = nn.LayerNorm(256)
+        self.l1 = nn.Linear(state_dim + action_dim, 512)
+        self.l2 = nn.Linear(512, 512)
+        self.l3 = nn.Linear(512, 1)
+        self.ln1 = nn.LayerNorm(512)
+        self.ln2 = nn.LayerNorm(512)
         # Q2 architecture
         self.l4 = nn.Linear(state_dim + action_dim, 256)
-        self.l5 = nn.Linear(256, 256)
-        self.l6 = nn.Linear(256, 1)
-        self.ln3 = nn.LayerNorm(256)
-        self.ln4 = nn.LayerNorm(256)
+        self.l5 = nn.Linear(512, 512)
+        self.l6 = nn.Linear(512, 1)
+        self.ln3 = nn.LayerNorm(512)
+        self.ln4 = nn.LayerNorm(512)
 
     def forward(self, state, action):
         sa = torch.cat([state, action], 1)
@@ -628,7 +628,8 @@ class TD3Learner:
         for i in range(self.learn_times):
             # evaluate_cycle步数，开始评估
             if self.learn_steps > 0 and self.learn_steps % self.evaluate_cycle == 0:
-                self.evaluate()
+                # self.evaluate()
+                self.evaluate_miaosuan()
 
             # 啥玩意？所以不用一边填充buffer一边从中采样？所以和环境互动的咋说。
             # 没毛病，论文里就是一边填充buffer一遍和环境互动
@@ -793,6 +794,26 @@ class TD3Learner:
                 np.average(info["episodes_rewards"]),
             )
         )
+    
+    def evaluate_miaosuan(self):
+        # there should be 114514 tuiyans to truely evaluate, but the time cost seems unaccteptable, so, toulan.
+        self.evaluate_steps += 1
+        all_states, all_rewards = self.tuiyan_single()
+        all_rewards = np.array(all_rewards)
+        print(
+            "learn steps = {}, average_reward = {}".format(
+                self.learn_steps,
+                np.average(all_rewards),
+            )
+        )
+
+        self.log.info(
+            "learn steps = {}, average_reward = {}".format(
+                self.learn_steps,
+                np.average(all_rewards),
+            )
+        )
+
     def _get_max_episode_len(self, batch):
         terminated = batch["terminated"]
         episode_num = terminated.shape[0]
@@ -1089,7 +1110,7 @@ class TD3Learner:
             self.buffer.save_buffer(self.results_path)
             self.buffer.save_buffer()
 
-        return episode
+        return is_done, next_state, reward
 
     def tuiyan_single(self):
         # 这个就是单纯的推一把，返回东西到外面用于储存和分析结果。
@@ -1100,22 +1121,23 @@ class TD3Learner:
         tuiyan_num = 2800 // self.env.shadow_step_num[0] + 1
 
         all_states = []
-
+        all_rewrads = []
         # 然后就真的开始打一把了。
         for i in range(tuiyan_num):
             
             print("tuiyan_single: number {}/{}".format(i, tuiyan_num))
             
-            is_done,next_state = self.interaction_with_env2(self.env, state)
+            is_done,next_state ,reward = self.interaction_with_env2(self.env, state)
             state = copy.deepcopy(next_state)
             all_states.append(self.env.state_dict[self.env.white_flag])
+            all_rewrads.append(reward)
             
             # 退出机制还是要有的
             if is_done:
                 break
         
         # 返回回去。
-        return all_states
+        return all_states, all_rewrads
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
