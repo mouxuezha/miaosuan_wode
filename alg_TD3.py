@@ -47,7 +47,7 @@ class Critic(nn.Module):
         self.ln1 = nn.LayerNorm(512)
         self.ln2 = nn.LayerNorm(512)
         # Q2 architecture
-        self.l4 = nn.Linear(state_dim + action_dim, 256)
+        self.l4 = nn.Linear(state_dim + action_dim, 512)
         self.l5 = nn.Linear(512, 512)
         self.l6 = nn.Linear(512, 1)
         self.ln3 = nn.LayerNorm(512)
