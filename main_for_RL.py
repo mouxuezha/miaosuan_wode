@@ -110,8 +110,8 @@ def get_defualt_value_env(env):
     env_params["state_shape"] = np.array([env.state_dim])
     env_params["state_dim"] = env.state_dim
     env_params["action_dim"] = env.action_dim
-    config["has_continuous_action_space"] = True  # this is for PPO, continuous action space; else discrete
-    config["env_name"] = "cross_fire"
+    env_params["has_continuous_action_space"] = True  # this is for PPO, continuous action space; else discrete
+    env_params["env_name"] = "cross_fire"
     return env_params
 
 def auto_run_RL(location = r"./RLtraining"):
