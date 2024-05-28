@@ -17,8 +17,8 @@ def get_defualt_value():
     config["is_use_gpu"] = False
     config["gamma"] = 0.99
     config["tau"] = 0.005
-    config["actor_lr"] = 0.0003
-    config["critic_lr"] = 0.0003
+    config["actor_lr"] = 0.0001
+    config["critic_lr"] = 0.0001
     config["lamda"] = 0.95
     config["eps"] = 0.2
     config["clip"] = 1

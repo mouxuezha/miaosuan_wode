@@ -341,7 +341,7 @@ class EnvForRL(object):
         my_units_now = select_by_type(units_all_now,key="color",value=0)
         pos_ave = get_pos_average(my_units_now)
         jvli = self.map.get_distance(pos_ave, self.target_pos)
-        reward_jvli = 5/(jvli+0.0001)
+        reward_jvli = 3/(jvli+1)
         rewrad_list.append(reward_jvli)
 
         # then, reward for enemy unit detected.
